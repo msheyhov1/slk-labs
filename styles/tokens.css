@@ -1,0 +1,87 @@
+/* ============================================================
+   SLK-labs — tokens.css  (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ)
+   Tailwind v4 @theme + lib/motion.ts ссылаются на эти же значения.
+   Контраст-закон: signal #00E08A живёт ПРОТИВ ink/как свет; на светлом
+   читаемый зелёный = signal-ink #0B7A4B; hairline — только декор.
+   ⏳ Финальные костяной/зелёный/шрифты подставляются одной заменой здесь.
+   ============================================================ */
+
+@theme {
+  /* — Color — */
+  --color-bone: #F2F0E9;
+  --color-bone-sunken: #E9E6DD;
+  --color-ink: #14171A;
+  --color-ink-soft: #1B1F23;
+  --color-ink-2: #5A5F66;
+  --color-hairline: #DAD6CC;
+  --color-signal: #00E08A;        /* glow/accent on dark only */
+  --color-signal-bright: #19F29A; /* hover сигнальной кнопки */
+  --color-signal-ink: #0B7A4B;    /* readable green on light (~4.7:1) */
+
+  /* — Type (роли мапятся на next/font переменные) — */
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --text-display: clamp(3rem, 9vw, 10rem);
+  --text-h1: clamp(2.25rem, 5vw, 4.5rem);
+  --text-h2: clamp(1.75rem, 3.2vw, 2.75rem);
+  --text-h3: clamp(1.3rem, 2vw, 1.75rem);
+  --text-lead: clamp(1.15rem, 1.6vw, 1.4rem);
+  --text-body: 1.0625rem;
+  --text-small: 0.9375rem;
+  --text-label: 0.8125rem;
+
+  --tracking-display: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-label: 0.08em;
+
+  --leading-display: 1.02;
+  --leading-tight: 1.1;
+  --leading-body: 1.6;
+  --leading-mono: 1.45;
+
+  /* — Radius — */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+
+  /* — Spacing base (числовая шкала p-1=4px … генерится отсюда) — */
+  --spacing: 0.25rem;
+
+  /* — Easing (паритет с GSAP в lib/motion.ts) — */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);   /* сигнатурный «оседание» */
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Производные/непокрытые Tailwind-неймспейсами токены — обычные CSS-переменные. */
+:root {
+  /* fg/линии против тёмной поверхности */
+  --color-ink-fg: #F2F0E9;
+  --color-ink-fg-2: rgba(242, 240, 233, 0.72);
+  --color-ink-fg-3: rgba(242, 240, 233, 0.55);
+  --color-ink-fg-4: rgba(242, 240, 233, 0.4);   /* самый приглушённый текст на тёмном */
+  --color-hairline-on-ink: rgba(218, 214, 204, 0.16);
+  --color-hairline-on-ink-soft: rgba(218, 214, 204, 0.14);
+  --color-hairline-on-ink-strong: rgba(218, 214, 204, 0.28); /* контурные кнопки на тёмном */
+
+  /* производные поверхности/прозрачности (единый источник правды) */
+  --color-bone-glass: rgba(242, 240, 233, 0.72); /* костяной фон хедера (blur) */
+  --color-ink-deep: #0F1215;                     /* глубже ink: hatch-фон, ховер тёмных кнопок */
+  --color-signal-rgb: 0 224 138;                 /* signal в rgb() для прозрачных свечений */
+
+  /* layout */
+  --container-max: 88rem;   /* 1408 */
+  --container-text: 38rem;  /* ширина чтения */
+  --gutter: clamp(1.25rem, 4vw, 4rem);
+  --header-h: 64px;
+  --hairline: 1px;
+
+  /* motion durations */
+  --dur-micro: 0.15s;
+  --dur-short: 0.3s;
+  --dur-base: 0.6s;
+  --dur-slow: 0.9s;
+  --dur-scene: 1.2s;
+  --stagger: 0.06s;
+}

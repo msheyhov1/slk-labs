@@ -1,26 +1,81 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================================
+   База
+   ============================================================ */
+html {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--header-h); /* якоря не уезжают под фикс-хедер */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  min-height: 100%;
+  background: var(--color-bone);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
 }
+
+::selection { background: var(--color-signal); color: var(--color-ink); }
+
+*:focus-visible {
+  outline: 2px solid var(--color-signal-ink);
+  outline-offset: 3px;
+  border-radius: 1px;
+}
+
+/* Lenis: пока скрипт не поднялся — нативный скролл; при reduced-motion — тоже. */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
+
+/* ============================================================
+   Reveal-грамматика (контент СОБИРАЕТСЯ, не «фейдится»).
+   Скрыто только когда JS пометил <html class="js"> — иначе виден (no-JS / fallback).
+   ============================================================ */
+html.js [data-reveal] { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  html.js [data-reveal] { opacity: 1 !important; transform: none !important; }
+  /* глушим любые CSS-переходы/анимации (в т.ч. transition-colors хедера) */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   Сигнальный пульс-узел (брендовая точка)
+   ============================================================ */
+@keyframes slk-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.slk-pulse { animation: slk-pulse 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slk-pulse { animation: none !important; }
+}
+
+/* ============================================================
+   Хелперы (то, что неудобно утилитами Tailwind)
+   ============================================================ */
+.diagonal-hatch {
+  background-color: var(--color-ink-deep);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(242, 240, 233, 0.05) 0,
+    rgba(242, 240, 233, 0.05) 1px,
+    transparent 1px,
+    transparent 11px
+  );
+}
+
+.signal-glow { box-shadow: 0 0 8px rgb(var(--color-signal-rgb) / 0.5); }

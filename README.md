@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SLK-labs — сайт студии
 
-## Getting Started
+Сайт студии разработки и автоматизации. Концепция: **живая система (хребет) + дисциплина
+минимализма (форма)**. По-настоящему «живой» один момент — герой с интерактивной сетью на WebGL;
+всё остальное чистое, спокойное, быстрое. Спека — в [`CLAUDE.md`](./CLAUDE.md).
 
-First, run the development server:
+## Стек (заперт)
+
+Next.js (App Router) · TypeScript · Tailwind v4 (`@theme`) · GSAP + ScrollTrigger + CustomEase ·
+Lenis · SplitType · **three + @react-three/fiber + @react-three/drei** (живая сеть в герое) ·
+@anthropic-ai/sdk (фаза 4, серверный route handler).
+
+## Запуск
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev                     # разработка → http://localhost:3000
+npm run build && npm run start  # прод-сборка локально
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Структура
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Полная карта «что с чем связано / где что крутить» — в [`CLAUDE.md`](./CLAUDE.md) и
+[`ARCHITECTURE.md`](./ARCHITECTURE.md). Кратко:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/                layout · page · globals.css · icon.svg
+components/
+  Header · SmoothScroll (Lenis↔GSAP) · Reveal · KineticText (SplitType)
+  hero/Hero · hero/HeroNetwork (lazy)
+    hero/network/   config · shaders · simulation · LivingNetwork   ← живая сеть (three/r3f)
+  sections/         Works · Services · Manifesto · Contact
+  ui/               Container · MonoLabel · Hairline · Button · SectionHead
+lib/
+  site.ts           нав · метаданные · контакты
+  content/          hero · services · manifesto · contact   (весь копирайт)
+  cases.ts          данные кейсов
+  gsap.ts · motion.ts
+styles/tokens.css   ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ → кормит Tailwind @theme
+docs/SLK-labs_Design_Tokens.md
+```
 
-## Learn More
+**Где что крутить:** токены/цвет — `styles/tokens.css`; текст — `lib/content/*`; кейсы — `lib/cases.ts`;
+нав/SEO — `lib/site.ts`; **физика/вид живой сети — `components/hero/network/config.ts`**;
+плавность скролла — `components/SmoothScroll.tsx`; хедер — `components/Header.tsx`.
 
-To learn more about Next.js, take a look at the following resources:
+## Принципы (из CLAUDE.md)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Контраст-закон:** сигнальный зелёный `#00E08A` — только против тёмного / как свет; на светлом
+  читаемый зелёный = `#0B7A4B`. Hairline — только декор.
+- **Один источник правды** для токенов; CSS и GSAP двигаются одинаково (`expo.out` = «оседание»).
+- **Один WebGL-момент** (герой), ленивая загрузка, бюджет 60 FPS / зелёные CWV.
+- **`prefers-reduced-motion`** уважается везде → сеть застывает в статичную структуру, ревилы выкл.
+- **A11y:** semantic HTML, skip-link, видимый focus, тач-скролл героя не блокируется.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Что готово / что дальше
 
-## Deploy on Vercel
+Реализованы **фазы 0–3** (каркас, дизайн-система, статические секции + грамматика движения, живая сеть).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Осталось (по CLAUDE.md):
+- **Фаза 4 — AI-ассистент:** `app/api/assistant/route.ts` + Anthropic SDK. Нужен серверный
+  `ANTHROPIC_API_KEY` (только в `.env.local` / Vercel env, никогда не в клиент).
+- **Фаза 5 — контент:** реальные кейсы вместо плейсхолдеров в `lib/cases.ts` (подтвердить, что
+  проекты публикуемы — крипто/AML/клиентские могут требовать обезличивания/NDA), страницы `work/[slug]`.
+- **Деплой:** git push + Vercel-линковка выполняет владелец (агент аккаунты не заводит).
+- ⏳ Подстановка финального костяного/зелёного/шрифтов — одной заменой в `styles/tokens.css`.
