@@ -28,6 +28,7 @@ jobs:
         run: npm run build
         env:
           GH_PAGES: "true"
+          NEXT_PUBLIC_SITE_URL: https://${{ github.repository_owner }}.github.io/slk-labs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./out

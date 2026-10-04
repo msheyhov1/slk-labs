@@ -76,7 +76,7 @@ export function Hero() {
             >
               {hero.specs.map((s) => (
                 <div key={s.label} className="m-0 bg-ink px-[18px] py-4">
-                  <dt className="font-mono text-[11px] uppercase tracking-label text-ink-2">{s.label}</dt>
+                  <dt className="font-mono text-[11px] uppercase tracking-label text-[var(--color-ink-fg-3)]">{s.label}</dt>
                   <dd
                     className={`m-0 mt-[6px] font-mono text-[14px] ${
                       "signal" in s && s.signal ? "text-signal" : "text-[var(--color-ink-fg)]"

@@ -45,11 +45,11 @@ export function Header() {
     <header
       className={`fixed inset-x-0 top-0 z-50 flex h-[var(--header-h)] items-center border-b transition-colors duration-300 ease-standard ${shell}`}
     >
-      <Container className="flex items-center justify-between gap-6">
+      <Container className="flex items-center justify-between gap-4 sm:gap-6">
         <a
           href="#top"
           aria-label="SLK-labs — на главную"
-          className={`flex items-center gap-[10px] no-underline ${logo}`}
+          className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap no-underline ${logo}`}
         >
           <span aria-hidden className={`slk-pulse h-2 w-2 shrink-0 rounded-[1px] ${dot}`} />
           <span className="text-[17px] font-semibold tracking-tight">
@@ -57,12 +57,12 @@ export function Header() {
           </span>
         </a>
 
-        <nav aria-label="Основная навигация" className="flex items-center gap-5 sm:gap-7">
+        <nav aria-label="Основная навигация" className="flex items-center gap-3 sm:gap-7">
           {nav.map((n) => (
             <a
               key={n.href}
               href={n.href}
-              className={`-my-3 py-3 font-mono text-[12px] uppercase tracking-label no-underline transition-colors duration-[var(--dur-micro)] ease-standard sm:text-[13px] ${link}`}
+              className={`-my-3 py-3 font-mono text-[11px] uppercase tracking-label no-underline transition-colors duration-[var(--dur-micro)] ease-standard sm:text-[13px] ${link}`}
             >
               {n.label}
             </a>

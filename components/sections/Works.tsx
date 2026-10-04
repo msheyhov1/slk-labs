@@ -52,7 +52,7 @@ export function Works() {
                   <h3 className="m-0 text-[1.5rem] font-semibold tracking-tight text-[var(--color-ink-fg)]">
                     {c.title}
                   </h3>
-                  <span className="text-base text-ink-2">{c.sub}</span>
+                  <span className="text-base text-[var(--color-ink-fg-3)]">{c.sub}</span>
                 </div>
                 <p className="mt-3 max-w-[40ch] text-small leading-body text-[var(--color-ink-fg-3)]">
                   {c.summary}

@@ -10,8 +10,8 @@ export const hero = {
   },
   specs: [
     { label: "Профиль", value: "САЙТЫ · БОТЫ · АВТО" },
-    { label: "Бюджет", value: "60 FPS / CWV" },
-    { label: "Доступность", value: "WCAG AA / AAA" },
+    { label: "Моушн", value: "3D · GSAP · LENIS" },
+    { label: "Доступность", value: "FOCUS · REDUCED-MOTION" },
     { label: "Статус", value: "ОНЛАЙН", signal: true },
   ],
 } as const;
