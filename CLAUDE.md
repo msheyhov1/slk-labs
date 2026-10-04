@@ -86,12 +86,17 @@ slk-labs/
 │   ├── KineticText.tsx       # КЛИЕНТ. SplitType пословно + GSAP settle (единственная кинетика текста)
 │   ├── hero/
 │   │   ├── Hero.tsx          # секция героя ← lib/content/hero
-│   │   ├── HeroNetwork.tsx   # КЛИЕНТ. Ленивый (dynamic ssr:false) слой сети, pointer-events:none
-│   │   └── network/          # ← ЖИВАЯ СЕТЬ, разнесена:
-│   │       ├── config.ts     #   ВСЕ РУЧКИ (физика/цвет/плотность/радиусы)
-│   │       ├── shaders.ts    #   GLSL узлов
-│   │       ├── simulation.ts #   чистая физика (без three/react), владеет буферами
-│   │       └── LivingNetwork.tsx  # КЛИЕНТ. Canvas r3f + useFrame → sim.step → буферы
+│   │   ├── HeroNetwork.tsx   # КЛИЕНТ. IntersectionObserver → ленивый (dynamic ssr:false) слой сети, pointer-events:none
+│   │   └── network/          # ← ЖИВАЯ СЕТЬ «Ядро», разнесена:
+│   │       ├── config.ts     #   ВСЕ РУЧКИ (решётка/рост/физика/цвет/кадр/пост/качество)
+│   │       ├── lattice.ts    #   чистая форма: seed-RNG, fbm, оболочки, маска, линза, рёбра, хабы, пыль
+│   │       ├── growth.ts     #   чистый порядок сборки: BFS, времена рождения, easing-хелперы
+│   │       ├── simulation.ts #   чистая физика (без three/react), владеет буферами, своё время simTime
+│   │       ├── shaders.ts    #   GLSL узлов+пыли, ядра, гало, инъекции хабов
+│   │       ├── journey.ts    #   стор прогресса/видимости/assembled (единственный файл сети в главном бандле)
+│   │       ├── post.ts       #   композер: RenderPass → UnrealBloom → Output → FXAA (десктоп)
+│   │       ├── PostFX.tsx    #   КЛИЕНТ. Монтирует композер, useFrame priority 1
+│   │       └── LivingNetwork.tsx  # КЛИЕНТ. Canvas r3f + Scene: риг → тень → луч → sim.step → flush
 │   ├── sections/             # Works ← lib/cases · Services/Manifesto ← lib/content · Contact ← lib/content
 │   └── ui/                   # Container · MonoLabel · Hairline · Button · SectionHead (серверные примитивы)
 ├── lib/
@@ -118,7 +123,7 @@ slk-labs/
 - `styles/tokens.css`  →  (Tailwind `@theme` генерит утилиты `bg-bone`/`text-ink`/`text-h2`/`ease-out-expo`… + CSS-vars `var(--…)`)  →  используется во ВСЕХ компонентах. Вторая правда запрещена.
 - `app/layout.tsx`  →  `SmoothScroll` (Lenis) + `Header` + метаданные из `lib/site`.
 - `SmoothScroll` / `Reveal` / `KineticText`  →  `lib/gsap` (плагины, `prefersReduced`) + `lib/motion` (easing/длительности). CSS-easing ↔ GSAP CustomEase — паритет.
-- `Hero`  →  `HeroNetwork` (lazy)  →  `network/LivingNetwork`  →  `network/{config, shaders, simulation}`.
+- `Hero`  →  `HeroNetwork` (IO + lazy)  →  `network/LivingNetwork`  →  `network/{config → lattice → growth → simulation, shaders, post, journey}`.
   Сеть слушает курсор на **window** (канвас `pointer-events:none`) — поэтому скролл и клики по CTA свободны.
 
 **ГДЕ ЧТО КРУТИТЬ (чтобы не метаться по коду):**
@@ -130,6 +135,9 @@ slk-labs/
 | Кейсы (карточки в Works) | `lib/cases.ts` |
 | Навигацию / SEO-метаданные / контакты | `lib/site.ts` |
 | **Физику и вид живой сети** (тяга, чистая зона, радиус, плотность, зелёный) | `components/hero/network/config.ts` |
+| Форма решётки / рост / порядок сборки | `lattice.ts`, `growth.ts` (+ `config.lattice`/`config.growth`) |
+| Пост-обработка (bloom/FXAA) | `post.ts` (+ `config.post`) |
+| Прогресс скролла / видимость / assembled | `journey.ts` |
 | Длительности/easing анимаций (GSAP) | `lib/motion.ts` |
 | Плавность скролла (инерция) | `components/SmoothScroll.tsx` (Lenis `lerp`) |
 | Прозрачность/порог переключения хедера | `components/Header.tsx` |
@@ -141,6 +149,9 @@ slk-labs/
 - Сеть — `pointer-events:none`, курсор на window. Не вешать r3f-события на канвас (сломает скролл/клики).
 - Один WebGL-момент (только герой), ленивый. tokens.css — единственный источник правды.
 - Живая сеть = **three/r3f/drei** (по локу). tsParticles НЕ использовать (был откатан).
+- Сцена ставится на паузу вне экрана (IO → `frameloop='demand'`); время симуляции идёт только внутри `step`.
+- Цвета из config переводятся в linear через `THREE.Color`, не вручную. lattice/growth/simulation — чистые (без three/react).
+- Ленивый 3D-чанк ≤ 350 KB gz; в нём нет gsap, drei Environment/Segments/Line, @react-three/postprocessing, three-stdlib.
 
 ---
 

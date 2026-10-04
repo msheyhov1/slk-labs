@@ -83,5 +83,6 @@
   --dur-base: 0.6s;
   --dur-slow: 0.9s;
   --dur-scene: 1.2s;
+  --dur-grow: 1.9s;   /* рост «Ядра» в герое (config.growth.total) */
   --stagger: 0.06s;
 }

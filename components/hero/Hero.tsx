@@ -16,12 +16,15 @@ export function Hero() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 90% at 70% 30%, rgb(var(--color-signal-rgb) / 0.06), transparent 60%)",
+            "radial-gradient(120% 90% at 70% 30%, rgb(var(--color-signal-rgb) / 0.03), transparent 60%)",
         }}
       />
 
       <Container className="relative z-[2] py-[120px] pt-[136px]">
-        <div className="mb-10 flex items-center justify-between gap-6 border-b border-[var(--color-hairline-on-ink)] pb-7">
+        <div
+          data-hero-text
+          className="mb-10 flex items-center justify-between gap-6 border-b border-[var(--color-hairline-on-ink)] pb-7"
+        >
           <MonoLabel tone="fg-3">{hero.eyebrow}</MonoLabel>
           <span className="flex items-center gap-2 whitespace-nowrap font-mono text-[13px] tracking-[0.06em] text-signal">
             <span className="signal-glow h-[6px] w-[6px] rounded-full bg-signal" />
@@ -29,11 +32,11 @@ export function Hero() {
           </span>
         </div>
 
-        <h1 className="m-0 max-w-[16ch] text-[clamp(2.6rem,7vw,7rem)] font-semibold leading-[1.0] tracking-display">
+        <h1 data-hero-text className="m-0 max-w-[16ch] text-[clamp(2.6rem,7vw,7rem)] font-semibold leading-[1.0] tracking-display">
           {hero.title}
         </h1>
 
-        <p className="mt-8 max-w-[42rem] text-lead leading-body text-[var(--color-ink-fg-2)]">
+        <p data-hero-text className="mt-8 max-w-[42rem] text-lead leading-body text-[var(--color-ink-fg-2)]">
           {hero.lead}
           <span className="text-[var(--color-ink-fg-3)]"> {hero.descriptor}</span>
         </p>

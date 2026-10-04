@@ -1,7 +1,7 @@
 // GSAP-карта моушна. Зеркалит CSS-токены (tokens.css §Motion) —
 // CSS и GSAP двигаются одинаково, второй правды нет.
 export const motion = {
-  dur: { micro: 0.15, short: 0.3, base: 0.6, slow: 0.9, scene: 1.2 },
+  dur: { micro: 0.15, short: 0.3, base: 0.6, slow: 0.9, scene: 1.2, grow: 1.9 },
   stagger: 0.06,
   ease: {
     out: "power2.out",

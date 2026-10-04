@@ -1,202 +1,327 @@
-// Чистая физика живой сети — БЕЗ three и react (тестируемо, изолированно).
-// Владеет типизированными массивами; компонент оборачивает их в BufferAttribute.
-//
-// Модель: каждый узел пружиной держится у «дома» (rest) и дышит; курсор мягко
-// тянет (sin-профиль — тяга гаснет у самого курсора → не слипаются) и держит
-// «чистую зону» (отталкивание вплотную); касание бросает ударную волну.
-import { NETWORK as C } from "./config";
+// Симуляция «Ядра» — чистая, БЕЗ three/react. Владеет всеми буферами (атрибуты геометрий
+// ссылаются прямо на них, без копий). Своё время simTime продвигается только внутри step() →
+// пауза вне экрана невидима для роста/пакетов/ударов. Всё — функция (simTime, progress),
+// поэтому скраб скролла назад точен.
+import { NETWORK as C, type Tier } from "./config";
+import type { Lattice } from "./lattice";
+import { type Growth, growFactor, expoOut, smoothstep } from "./growth";
 
-export type Pointer = { x: number; y: number; active: boolean };
-export type Shock = { x: number; y: number; t: number };
+/** Луч курсора в ЛОКАЛЬНОМ пространстве spin-группы (o + d·t, d — единичный). */
+export type PointerRay = { ox: number; oy: number; oz: number; dx: number; dy: number; dz: number; active: boolean };
+/** Удар — сфера из точки c, ЛОКАЛЬНОЕ пространство; speed задан только у удара роста. */
+export type Shock = { x: number; y: number; z: number; t: number; speed?: number };
+export type RGB = readonly [number, number, number];
 
-const BASE = C.colors.base.rgb;
-const SIGNAL = C.colors.signal.rgb;
+// Силы заданы в «импульсах за кадр при 60 fps» (как kick·60): пружина и тяга курсора
+// умножаются на FORCE, иначе пружина 3.4 переглушена и узлы доползают до покоя ~8 с
+// вместо ~0.9 с. Отношение pull/spring (глубина туннеля у курсора) при этом сохранено.
+const FORCE = 60;
 
-export class NetworkSimulation {
+const P = C.physics, HT = C.heat, S = C.shock, PK = C.packets, G = C.growth, J = C.journey;
+const R0 = C.lattice.R0;
+const R = P.influence * R0; // радиус реакции на курсор, локальные единицы
+const CLEAR_R = P.clearZone * R; // чистая зона (туннель)
+
+export class LatticeSimulation {
   readonly N: number;
-  readonly maxSeg: number;
-  segCount = 0;
+  readonly D: number;
+  readonly H: number;
 
-  // публичные буферы (геометрия ссылается прямо на них)
-  readonly positions: Float32Array; // N * 3 (xyz)
-  readonly heat: Float32Array; // N
-  readonly sizes: Float32Array; // N
-  readonly segPositions: Float32Array; // maxSeg * 2 * 3
-  readonly segColors: Float32Array; // maxSeg * 2 * 3
+  // буферы без копий — атрибуты геометрий оборачивают их
+  readonly positions: Float32Array; // (N+D)*3; блок пыли [N, N+D) пишется один раз
+  readonly heat: Float32Array; // N+D (пыль = 0)
+  readonly grow: Float32Array; // N+D (пыль = 1)
+  readonly shade: Float32Array; // N+D (узлы пишет рендер каждый кадр; пыль = 1)
+  readonly meta: Float32Array; // (N+D)*4 статично: size, kind (0 узел / 1 пыль), consumedAt, phase
+  readonly strutPos: Float32Array; // strutCount*6
+  readonly strutCol: Float32Array;
+  readonly hairPos: Float32Array; // hairCount*6
+  readonly hairCol: Float32Array;
+  readonly hubPos: Float32Array; // H*3
+  readonly hubHeat: Float32Array; // H
+  readonly hubScale: Float32Array; // H
 
-  private readonly rest: Float32Array; // N * 2 — точки покоя
-  private readonly vel: Float32Array; // N * 2
-  private readonly baseHeat: Uint8Array; // N — «горячие» узлы
-  private readonly phase: Float32Array; // N
-  private vw = 0;
-  private vh = 0;
+  // скаляры, читаемые рендером после step()
+  simTime = 0;
+  tEff = 0;
+  front = 0; // tEff / tMax, 0..1
+  assembled = false;
+  coreScale = 0;
+  pulse = 0;
+  halo = 0;
+  haloIdle: number = C.halo.idle; // рендер ставит idleNoBloom, когда bloom выключен
+  packetRunning = false;
 
-  constructor(width: number, height: number) {
-    const mobile = width < C.mobileBreakpoint;
-    const divisor = mobile ? C.density.divisorMobile : C.density.divisorDesktop;
-    const cap = mobile ? C.density.maxMobile : C.density.max;
-    this.N = Math.max(C.density.min, Math.min(cap, Math.round((width * height) / divisor)));
-    this.maxSeg = this.N * 10;
+  private readonly vel: Float32Array; // N*3
+  private readonly l: Lattice;
+  private readonly g: Growth;
+  private readonly tier: Tier;
+  private readonly base: RGB;
+  private readonly signal: RGB;
+  private readonly tMax: number;
+  private packetStart = -1;
+  private nextPacket = 0;
 
-    this.positions = new Float32Array(this.N * 3);
-    this.heat = new Float32Array(this.N);
-    this.sizes = new Float32Array(this.N);
-    this.rest = new Float32Array(this.N * 2);
-    this.vel = new Float32Array(this.N * 2);
-    this.baseHeat = new Uint8Array(this.N);
-    this.phase = new Float32Array(this.N);
-    this.segPositions = new Float32Array(this.maxSeg * 6);
-    this.segColors = new Float32Array(this.maxSeg * 6);
+  constructor(lattice: Lattice, growth: Growth, colorsLinear: { base: RGB; signal: RGB }, tier: Tier) {
+    this.l = lattice;
+    this.g = growth;
+    this.tier = tier;
+    this.base = colorsLinear.base;
+    this.signal = colorsLinear.signal;
+    this.tMax = growth.tMax;
+    const N = (this.N = lattice.N);
+    const D = (this.D = lattice.dust.count);
+    this.H = lattice.hubIndex.length;
 
-    this.setBounds(width, height);
-    const hw = width / 2;
-    const hh = height / 2;
-    for (let i = 0; i < this.N; i++) {
-      const x = (Math.random() * 2 - 1) * hw;
-      const y = (Math.random() * 2 - 1) * hh;
-      this.positions[i * 3] = x;
-      this.positions[i * 3 + 1] = y;
-      this.positions[i * 3 + 2] = (Math.random() * 2 - 1) * 0.8;
-      this.rest[i * 2] = x;
-      this.rest[i * 2 + 1] = y;
-      this.baseHeat[i] = Math.random() < C.baseHeatChance ? 1 : 0;
-      this.sizes[i] = this.baseHeat[i] ? 3.6 : 2.3;
-      this.phase[i] = Math.random() * Math.PI * 2;
-    }
-  }
-
-  setBounds(width: number, height: number) {
-    this.vw = width;
-    this.vh = height;
-  }
-
-  /** Один шаг симуляции. Мутирует positions/heat/seg*; обновляет segCount. */
-  step(time: number, dt: number, pointer: Pointer, shocks: Shock[], reduced: boolean) {
-    const { positions: pos, heat, rest, vel, segPositions: segPos, segColors: segCol, N } = this;
-    const minDim = Math.min(this.vw, this.vh);
-    const maxDist = minDim * C.linkDist;
-    const R = minDim * C.influence;
+    this.positions = new Float32Array((N + D) * 3);
+    this.heat = new Float32Array(N + D);
+    this.grow = new Float32Array(N + D);
+    this.shade = new Float32Array(N + D).fill(1);
+    this.meta = new Float32Array((N + D) * 4);
+    this.vel = new Float32Array(N * 3);
+    this.strutPos = new Float32Array(lattice.strutCount * 6);
+    this.strutCol = new Float32Array(lattice.strutCount * 6);
+    this.hairPos = new Float32Array(lattice.hairCount * 6);
+    this.hairCol = new Float32Array(lattice.hairCount * 6);
+    this.hubPos = new Float32Array(this.H * 3);
+    this.hubHeat = new Float32Array(this.H);
+    this.hubScale = new Float32Array(this.H);
 
     for (let i = 0; i < N; i++) {
-      const ix = i * 3;
-      const iv = i * 2;
-      let x = pos[ix];
-      let y = pos[ix + 1];
+      this.meta[i * 4] = lattice.size[i];
+      this.meta[i * 4 + 1] = 0;
+      this.meta[i * 4 + 2] = 0;
+      this.meta[i * 4 + 3] = lattice.phase[i];
+    }
+    const dust = lattice.dust;
+    for (let d = 0; d < D; d++) {
+      const j = N + d;
+      this.positions[j * 3] = dust.pos[d * 3];
+      this.positions[j * 3 + 1] = dust.pos[d * 3 + 1];
+      this.positions[j * 3 + 2] = dust.pos[d * 3 + 2];
+      this.meta[j * 4] = C.lattice.dust.size;
+      this.meta[j * 4 + 1] = 1;
+      this.meta[j * 4 + 2] = dust.consumedAt[d];
+      this.meta[j * 4 + 3] = dust.phase[d];
+      this.grow[j] = 1;
+    }
+  }
 
-      const bx = rest[iv] + (reduced ? 0 : Math.sin(time * 0.5 + this.phase[i]) * C.breath);
-      const by = rest[iv + 1] + (reduced ? 0 : Math.cos(time * 0.42 + this.phase[i] * 1.3) * C.breath);
+  /** Один анимированный шаг. Мутирует все буферы и скаляры. */
+  step(dtIn: number, pointer: PointerRay, shocks: Shock[], progress: number): void {
+    // 1. своё время
+    const dt = Math.min(dtIn, 1 / 30);
+    this.simTime += dt;
+    const T = this.simTime;
+    const fr = Math.pow(P.friction, dt * 60);
+    const hd = Math.pow(P.heatDecay, dt * 60);
+    const tMax = this.tMax;
 
-      let h = this.baseHeat[i]
-        ? reduced
-          ? 0.6
-          : 0.3 + 0.3 * (0.5 + 0.5 * Math.sin(time * 1.4 + this.phase[i]))
-        : 0;
+    // 2. анти-рост от прогресса скролла: верхушки втягиваются первыми
+    const Dg = smoothstep(J.ungrow[0], J.ungrow[1], progress);
+    const tEff = Math.min(T, tMax) - Dg * tMax;
+    this.tEff = tEff;
+    this.front = Math.min(1, Math.max(0, tEff / tMax));
+    this.assembled = T >= G.assembledAt;
 
-      if (!reduced) {
-        let ax = (bx - x) * C.spring;
-        let ay = (by - y) * C.spring;
+    // 3. пакеты: ядро раз в period посылает импульс по дереву
+    let w = (T - this.packetStart) * PK.speed;
+    let running = this.packetStart >= 0 && w <= this.g.maxHop + 3;
+    if (!running && T >= PK.first && T >= this.nextPacket) {
+      this.packetStart = T;
+      this.nextPacket = T + PK.period;
+      w = 0;
+      running = true;
+    }
+    this.packetRunning = running;
+    const packetSig2 = 2 * PK.sigma * PK.sigma;
 
-        if (pointer.active) {
-          const dx = pointer.x - x;
-          const dy = pointer.y - y;
-          const d = Math.hypot(dx, dy) || 1;
-          if (d < R) {
-            const ux = dx / d;
-            const uy = dy / d;
-            const reach = Math.sin((d / R) * Math.PI) * C.pull; // гаснет у курсора
-            ax += ux * reach;
-            ay += uy * reach;
-            const clearR = R * C.clearZone;
-            if (d < clearR) {
-              const rep = (1 - d / clearR) * C.pull * 2.2; // чистая зона
-              ax -= ux * rep;
-              ay -= uy * rep;
-            }
-            h = Math.max(h, (1 - d / R) * C.heatFromPointer);
+    // 4. узлы в порядке BFS (родитель уже обновлён в этом кадре)
+    const { positions: pos, heat, grow, vel } = this;
+    const { rest, normal, shell, phase, warm } = this.l;
+    const { order, parent, birth, hop } = this.g;
+    const pa = pointer.active;
+    const nSh = shocks.length;
+    const TWO_PI = Math.PI * 2;
+
+    for (let oi = 0; oi < this.N; oi++) {
+      const i = order[oi];
+      const i3 = i * 3;
+      const g = growFactor(tEff, birth[i], G.nodeDur);
+      grow[i] = g;
+      const p = parent[i];
+      const ax0 = p >= 0 ? pos[p * 3] : 0;
+      const ay0 = p >= 0 ? pos[p * 3 + 1] : 0;
+      const az0 = p >= 0 ? pos[p * 3 + 2] : 0;
+      if (g <= 0) {
+        // ещё не родился — сидит на якоре (родителе/ядре)
+        pos[i3] = ax0; pos[i3 + 1] = ay0; pos[i3 + 2] = az0;
+        vel[i3] = 0; vel[i3 + 1] = 0; vel[i3 + 2] = 0;
+        heat[i] *= hd;
+        continue;
+      }
+      const k = shell[i];
+      const sB = 1 + P.breathShells[k] * Math.sin(TWO_PI * P.breathHz * T + 0.6 * k);
+      const br = P.breath * Math.sin(0.5 * T + phase[i]);
+      const rbx = rest[i3] * sB + normal[i3] * br;
+      const rby = rest[i3 + 1] * sB + normal[i3 + 1] * br;
+      const rbz = rest[i3 + 2] * sB + normal[i3 + 2] * br;
+      const tx = ax0 + (rbx - ax0) * g;
+      const ty = ay0 + (rby - ay0) * g;
+      const tz = az0 + (rbz - az0) * g;
+
+      let x = pos[i3], y = pos[i3 + 1], z = pos[i3 + 2];
+      const spring = P.spring * FORCE;
+      let accx = (tx - x) * spring, accy = (ty - y) * spring, accz = (tz - z) * spring;
+      let h = 0;
+
+      if (pa) {
+        // ближайшая точка луча: тяга по sin-профилю (гаснет у луча и на краю) + чистая зона = туннель
+        const rx = x - pointer.ox, ry = y - pointer.oy, rz = z - pointer.oz;
+        const t = rx * pointer.dx + ry * pointer.dy + rz * pointer.dz;
+        const ddx = pointer.ox + pointer.dx * t - x;
+        const ddy = pointer.oy + pointer.dy * t - y;
+        const ddz = pointer.oz + pointer.dz * t - z;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz) || 1e-4;
+        if (dist < R) {
+          const ux = ddx / dist, uy = ddy / dist, uz = ddz / dist;
+          const reach = Math.sin((dist / R) * Math.PI) * P.pull * FORCE;
+          accx += ux * reach; accy += uy * reach; accz += uz * reach;
+          if (dist < CLEAR_R) {
+            const rep = (1 - dist / CLEAR_R) * P.pull * 2.2 * FORCE;
+            accx -= ux * rep; accy -= uy * rep; accz -= uz * rep;
           }
-        }
-
-        for (let s = 0; s < shocks.length; s++) {
-          const sh = shocks[s];
-          const radius = sh.t * minDim * 1.05;
-          const band = R * 0.55;
-          const dx = x - sh.x;
-          const dy = y - sh.y;
-          const d = Math.hypot(dx, dy) || 1;
-          if (Math.abs(d - radius) < band) {
-            const k = (1 - Math.abs(d - radius) / band) * (1 - sh.t / 1.4);
-            ax += (dx / d) * k * C.kick * 60;
-            ay += (dy / d) * k * C.kick * 60;
-            h = Math.max(h, k);
-          }
-        }
-
-        let vx = vel[iv] + ax * dt;
-        let vy = vel[iv + 1] + ay * dt;
-        vx *= C.friction;
-        vy *= C.friction;
-        x += vx * dt;
-        y += vy * dt;
-        vel[iv] = vx;
-        vel[iv + 1] = vy;
-        pos[ix] = x;
-        pos[ix + 1] = y;
-
-        h = Math.max(h, Math.min(1, Math.hypot(vx, vy) * 0.12));
-      }
-
-      heat[i] = reduced ? h : Math.max(heat[i] * 0.9, h);
-    }
-
-    if (!reduced) {
-      for (let s = shocks.length - 1; s >= 0; s--) {
-        shocks[s].t += dt;
-        if (shocks[s].t > 1.4) shocks.splice(s, 1);
-      }
-    }
-
-    // связи между узлами + зелёные лучи к курсору
-    let seg = 0;
-    const baseI = C.line.baseIntensity;
-    for (let i = 0; i < N && seg < this.maxSeg; i++) {
-      for (let j = i + 1; j < N && seg < this.maxSeg; j++) {
-        const dx = pos[i * 3] - pos[j * 3];
-        const dy = pos[i * 3 + 1] - pos[j * 3 + 1];
-        const d = Math.hypot(dx, dy);
-        if (d < maxDist) {
-          const al = 1 - d / maxDist;
-          const hot = Math.max(heat[i], heat[j]);
-          const o = seg * 6;
-          segPos[o] = pos[i * 3]; segPos[o + 1] = pos[i * 3 + 1]; segPos[o + 2] = pos[i * 3 + 2];
-          segPos[o + 3] = pos[j * 3]; segPos[o + 4] = pos[j * 3 + 1]; segPos[o + 5] = pos[j * 3 + 2];
-          const bi = baseI * al;
-          const grn = hot * al * C.line.hotMix;
-          const cr = BASE[0] * bi + SIGNAL[0] * grn;
-          const cg = BASE[1] * bi + SIGNAL[1] * grn;
-          const cb = BASE[2] * bi + SIGNAL[2] * grn;
-          segCol[o] = cr; segCol[o + 1] = cg; segCol[o + 2] = cb;
-          segCol[o + 3] = cr; segCol[o + 4] = cg; segCol[o + 5] = cb;
-          seg++;
+          h = Math.max(h, (1 - dist / R) * HT.fromPointer);
         }
       }
-    }
-    if (!reduced && pointer.active) {
-      const px = pointer.x;
-      const py = pointer.y;
-      for (let i = 0; i < N && seg < this.maxSeg; i++) {
-        const d = Math.hypot(pos[i * 3] - px, pos[i * 3 + 1] - py);
-        if (d < R) {
-          const al = (1 - d / R) * C.pointerRayOpacity;
-          const o = seg * 6;
-          segPos[o] = pos[i * 3]; segPos[o + 1] = pos[i * 3 + 1]; segPos[o + 2] = pos[i * 3 + 2];
-          segPos[o + 3] = px; segPos[o + 4] = py; segPos[o + 5] = 0;
-          const cr = SIGNAL[0] * al, cg = SIGNAL[1] * al, cb = SIGNAL[2] * al;
-          segCol[o] = cr; segCol[o + 1] = cg; segCol[o + 2] = cb;
-          segCol[o + 3] = cr; segCol[o + 4] = cg; segCol[o + 5] = cb;
-          seg++;
+
+      for (let s = 0; s < nSh; s++) {
+        const sh = shocks[s];
+        const radius = sh.t * (sh.speed ?? S.speed);
+        const cx = x - sh.x, cy = y - sh.y, cz = z - sh.z;
+        const dd = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1e-4;
+        const off = Math.abs(dd - radius);
+        if (off < S.band) {
+          const kk = (1 - off / S.band) * (1 - sh.t / S.life);
+          const imp = (kk * P.kick * 60) / dd;
+          accx += cx * imp; accy += cy * imp; accz += cz * imp;
+          h = Math.max(h, kk);
         }
       }
+
+      const vx = (vel[i3] + accx * dt) * fr;
+      const vy = (vel[i3 + 1] + accy * dt) * fr;
+      const vz = (vel[i3 + 2] + accz * dt) * fr;
+      x += vx * dt; y += vy * dt; z += vz * dt;
+      vel[i3] = vx; vel[i3 + 1] = vy; vel[i3 + 2] = vz;
+      pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+      h = Math.max(h, Math.min(1, Math.sqrt(vx * vx + vy * vy + vz * vz) * P.velocityHeat));
+
+      // источники жара: тёплые узлы, зелёный фронт роста, пакет
+      if (warm[i]) h = Math.max(h, HT.base[0] + (HT.base[1] - HT.base[0]) * (0.5 + 0.5 * Math.sin(HT.baseHz * T + phase[i])));
+      const fx = (tEff - birth[i] - HT.front.delay) / HT.front.sigma;
+      h = Math.max(h, HT.front.peak * Math.exp(-fx * fx));
+      if (running) {
+        const dw = w - hop[i];
+        h = Math.max(h, PK.bump * Math.exp(-(dw * dw) / packetSig2));
+      }
+      heat[i] = Math.max(heat[i] * hd, h);
     }
-    this.segCount = seg;
+
+    // 5. удары: время жизни + лимит (старые выбывают)
+    for (let s = shocks.length - 1; s >= 0; s--) {
+      shocks[s].t += dt;
+      if (shocks[s].t > S.life) shocks.splice(s, 1);
+    }
+    while (shocks.length > S.max) shocks.shift();
+
+    // 6. скаляры ядра/гало
+    this.coreScale = expoOut(T / G.coreDur) * (1 - 0.4 * smoothstep(J.coreShrink[0], J.coreShrink[1], progress));
+    const CP = C.core.pulse;
+    let pulse = CP.min + (CP.max - CP.min) * (0.5 + 0.5 * Math.sin(TWO_PI * CP.hz * T)) + C.core.ignite * Math.exp(-C.core.igniteDecay * T);
+    if (running) pulse += PK.corePulse * Math.exp(-3 * (T - this.packetStart));
+    this.pulse = pulse;
+    let halo = this.haloIdle + C.halo.ignite * Math.exp(-C.halo.igniteDecay * T);
+    for (let s = 0; s < shocks.length; s++) halo += S.haloFlare * Math.exp(-C.halo.shockDecay * shocks[s].t);
+    if (running) halo += PK.halo * Math.exp(-2 * (T - this.packetStart));
+    this.halo = halo * (1 - progress);
+
+    // 7–8. связи и хабы
+    this.fillLinks(false);
+    this.fillHubs();
+  }
+
+  /** reduced-motion: собранная решётка одним выстрелом — ровно та картинка, в которую оседает анимация. */
+  stepStatic(): void {
+    const { positions: pos, vel, grow, heat } = this;
+    const { rest, warm } = this.l;
+    for (let i = 0; i < this.N; i++) {
+      const i3 = i * 3;
+      pos[i3] = rest[i3]; pos[i3 + 1] = rest[i3 + 1]; pos[i3 + 2] = rest[i3 + 2];
+      vel[i3] = 0; vel[i3 + 1] = 0; vel[i3 + 2] = 0;
+      grow[i] = 1;
+      heat[i] = warm[i] ? 0.45 : 0;
+    }
+    this.tEff = this.tMax;
+    this.front = 1;
+    this.assembled = true;
+    this.coreScale = 1;
+    this.pulse = C.core.pulse.min;
+    this.halo = this.haloIdle;
+    this.packetRunning = false;
+    this.fillLinks(true);
+    this.fillHubs();
+  }
+
+  /** O(E): позиции и цвета концов рёбер. Корень = (0,0,0), grow 1, heat = pulse, shade 1. */
+  private fillLinks(full: boolean): void {
+    const { positions: pos, heat, grow, shade, base, signal } = this;
+    const { edgeA, edgeB, edgeKind, strutCount } = this.l;
+    const tree = this.g.treeEdge;
+    const E = edgeA.length;
+    const tierMul = this.tier === "mobile" ? C.mobile.intensity : 1;
+    const hot = C.line.hotMix;
+    for (let e = 0; e < E; e++) {
+      const a = edgeA[e], b = edgeB[e];
+      const strut = e < strutCount;
+      const out = strut ? this.strutPos : this.hairPos;
+      const col = strut ? this.strutCol : this.hairCol;
+      const o = (strut ? e : e - strutCount) * 6;
+      const kI = edgeKind[e] === 1 ? C.line.strut.intensity : C.line.hair.intensity;
+      const ga = grow[a], ha = heat[a], sa = shade[a];
+      let gb: number, hb: number, sb: number, bx: number, by: number, bz: number;
+      if (b >= 0) { gb = grow[b]; hb = heat[b]; sb = shade[b]; bx = pos[b * 3]; by = pos[b * 3 + 1]; bz = pos[b * 3 + 2]; }
+      else { gb = 1; hb = this.pulse; sb = 1; bx = 0; by = 0; bz = 0; }
+      const gmin = Math.min(ga, gb);
+      // до рождения ребро дерева нулевой длины → f = 0 → без «шапочек»
+      const f = full ? 1 : tree[e] ? smoothstep(0, 0.15, gmin) : gmin * gmin;
+      out[o] = pos[a * 3]; out[o + 1] = pos[a * 3 + 1]; out[o + 2] = pos[a * 3 + 2];
+      out[o + 3] = bx; out[o + 4] = by; out[o + 5] = bz;
+      const Ia = kI * f * sa * tierMul, Ga = ha * hot * f * sa * tierMul;
+      col[o] = base[0] * Ia + signal[0] * Ga;
+      col[o + 1] = base[1] * Ia + signal[1] * Ga;
+      col[o + 2] = base[2] * Ia + signal[2] * Ga;
+      const Ib = kI * f * sb * tierMul, Gb = hb * hot * f * sb * tierMul;
+      col[o + 3] = base[0] * Ib + signal[0] * Gb;
+      col[o + 4] = base[1] * Ib + signal[1] * Gb;
+      col[o + 5] = base[2] * Ib + signal[2] * Gb;
+    }
+  }
+
+  /** Хабы уважают тень под текстом (shade) и ярус: на мобайле жар бусин × mobile.intensity, как узлы и связи. */
+  private fillHubs(): void {
+    const { positions: pos, heat, grow, shade } = this;
+    const { hubIndex } = this.l;
+    const rad = C.lattice.hubs.radius;
+    const tierMul = this.tier === "mobile" ? C.mobile.intensity : 1;
+    for (let k = 0; k < this.H; k++) {
+      const i = hubIndex[k];
+      const sh = shade[i];
+      this.hubPos[k * 3] = pos[i * 3];
+      this.hubPos[k * 3 + 1] = pos[i * 3 + 1];
+      this.hubPos[k * 3 + 2] = pos[i * 3 + 2];
+      this.hubHeat[k] = heat[i] * sh * tierMul;
+      this.hubScale[k] = rad * grow[i] * (1 + 0.5 * heat[i]) * sh;
+    }
   }
 }
