@@ -3,6 +3,8 @@
 ## v1.2.0 — 2026-10-04
 
 Портфолио как система.
+- Скрэмбл моно-лейблов (`components/Scramble.tsx`): индексы секций, айброу героя и индексы карточек
+  перебираются и оседают при появлении и наведении; reduced-motion → статично.
 - `lib/cases.ts`: расширенная модель кейса (meta, readouts, metrics, sections, og, visibility/redaction),
   `present()` — единственный шлюз редакции, `assertPublishable()` при импорте.
 - Процедурные чертежи-обложки (`lib/blueprint.ts` → `components/work/Blueprint`): глобус поставок,

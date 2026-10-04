@@ -1,11 +1,12 @@
 import type { Presented } from "@/lib/cases";
 import { work } from "@/lib/content/work";
+import { Scramble } from "@/components/Scramble";
 
 /** «Слой прибора» поверх чертежа: индекс, узел, показания, подпись пресета, подсказка. Всё декоративно. */
 export function CoverChrome({ p, stage = false }: { p: Presented; stage?: boolean }) {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 p-[18px] font-mono uppercase">
-      <span className="absolute left-[18px] top-[18px] text-[12px] tracking-[0.06em] text-signal">{p.idx}</span>
+      <span className="absolute left-[18px] top-[18px] text-[12px] tracking-[0.06em] text-signal"><Scramble text={p.idx} /></span>
       <span data-node className="absolute right-[18px] top-[18px] h-[var(--node-size)] w-[var(--node-size)] rounded-[1px] bg-signal signal-glow" />
       <div className="absolute bottom-[18px] left-[18px] flex flex-col gap-1">
         <span className="hidden text-[11px] tracking-[0.06em] text-[var(--color-ink-fg-3)] min-[400px]:block">

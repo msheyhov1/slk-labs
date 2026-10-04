@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Reveal } from "@/components/Reveal";
+import { Scramble } from "@/components/Scramble";
 
 /**
  * Шапка секции: моно-индекс + заголовок + правый слот (нота/мета).
@@ -37,7 +38,7 @@ export function SectionHead({
             dark ? "text-signal" : "text-signal-ink"
           }`}
         >
-          {index}
+          <Scramble text={index} />
         </span>
         <h2
           id={titleId}

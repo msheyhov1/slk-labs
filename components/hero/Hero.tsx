@@ -1,6 +1,7 @@
 import { Container } from "@/components/ui/Container";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Button } from "@/components/ui/Button";
+import { Scramble } from "@/components/Scramble";
 import { HeroSeed } from "@/components/journey/HeroSeed";
 import { hero } from "@/lib/content/hero";
 import HeroNetwork from "./HeroNetwork";
@@ -37,7 +38,7 @@ export function Hero() {
               data-hero-copy
               className="mb-10 flex items-center justify-between gap-6 border-b border-[var(--color-hairline-on-ink)] pb-7"
             >
-              <MonoLabel tone="fg-3">{hero.eyebrow}</MonoLabel>
+              <MonoLabel tone="fg-3"><Scramble text={hero.eyebrow} /></MonoLabel>
               <span className="flex items-center gap-2 whitespace-nowrap font-mono text-[13px] tracking-[0.06em] text-signal">
                 <span className="signal-glow h-[6px] w-[6px] rounded-full bg-signal" />
                 {hero.status}
