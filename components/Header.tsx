@@ -1,19 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { Container } from "@/components/ui/Container";
 import { nav } from "@/lib/site";
 
+type Surface = "dark" | "bone";
+
 export function Header() {
-  // прозрачный поверх тёмного героя; костяной фон — после ухода с героя
-  const [scrolled, setScrolled] = useState(false);
+  // Поверхность под хедером: прозрачный+светлый над тёмным (герой, Works) ↔ костяной blur+тёмный над светлым.
+  // Источник — [data-surface] на секциях: ScrollTrigger по линии низа хедера (--header-h). Это состояние,
+  // не моушн → работает и в reduced-motion, и с нативным скроллом. Обёртка героя — pinSpacer,
+  // её высота включает спейсер пина → хедер прозрачен весь пин.
+  const [surface, setSurface] = useState<Surface>("dark");
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > window.innerHeight * 0.7);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) || 64;
+    const ctx = gsap.context(() => {
+      document.querySelectorAll<HTMLElement>("[data-surface]").forEach((el) =>
+        ScrollTrigger.create({
+          trigger: el,
+          start: `top ${headerH}px`,
+          end: `bottom ${headerH}px`,
+          onToggle: (s) => { if (s.isActive) setSurface(el.dataset.surface as Surface); },
+        }),
+      );
+    });
+    return () => ctx.revert();
   }, []);
+
+  const scrolled = surface === "bone";
 
   const shell = scrolled
     ? "border-hairline bg-[var(--color-bone-glass)] backdrop-blur-[14px]"

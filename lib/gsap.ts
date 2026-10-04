@@ -6,6 +6,8 @@ import { CustomEase } from "gsap/CustomEase";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, CustomEase);
+  // Явно (= дефолт для тач-устройств): изменения высоты < 25 % игнорируются → адресная строка не штормит refresh.
+  ScrollTrigger.config({ ignoreMobileResize: true });
   // Зеркалим сигнатурный CSS-easing (--ease-out-expo) один в один.
   if (!CustomEase.get("settle")) CustomEase.create("settle", "0.16, 1, 0.3, 1");
   if (!CustomEase.get("scene")) CustomEase.create("scene", "0.83, 0, 0.17, 1");

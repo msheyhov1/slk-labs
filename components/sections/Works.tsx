@@ -1,6 +1,7 @@
 import { Container } from "@/components/ui/Container";
 import { SectionHead } from "@/components/ui/SectionHead";
 import { Reveal } from "@/components/Reveal";
+import { ThreadLayer } from "@/components/journey/ThreadLayer";
 import { cases } from "@/lib/cases";
 
 export function Works() {
@@ -8,9 +9,12 @@ export function Works() {
     <section
       id="works"
       aria-labelledby="works-title"
-      className="bg-ink py-[clamp(72px,10vw,128px)] text-[var(--color-ink-fg)]"
+      data-journey-section
+      data-surface="dark"
+      className="bg-ink text-[var(--color-ink-fg)]"
     >
-      <Container>
+      <Container className="relative py-[clamp(72px,10vw,128px)]">
+        <ThreadLayer />
         <SectionHead index="01 / Кейсы" title="Избранные проекты" tone="dark" titleId="works-title">
           <span className="font-mono text-[13px] uppercase tracking-[0.06em] text-[var(--color-ink-fg-3)]">
             2024 — 2025 / {String(cases.length).padStart(2, "0")} записи
@@ -33,6 +37,12 @@ export function Works() {
                 <span className="absolute left-[18px] top-[18px] font-mono text-[12px] tracking-[0.06em] text-signal">
                   {c.idx}
                 </span>
+                {/* узел карточки: ховер зажигает (CSS [data-node]) */}
+                <span
+                  aria-hidden
+                  data-node
+                  className="absolute right-[18px] top-[18px] h-[var(--node-size)] w-[var(--node-size)] rounded-[1px] bg-signal signal-glow"
+                />
                 <span className="font-mono text-[11px] uppercase tracking-label text-[var(--color-ink-fg-4)]">
                   [ превью проекта ]
                 </span>

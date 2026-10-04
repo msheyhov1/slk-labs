@@ -11,6 +11,7 @@ lib/content/*           components/sections/*        app/layout.tsx
 lib/cases.ts            components/hero/*            app/globals.css
 styles/tokens.css       components/{Header,Reveal,KineticText}
 lib/{gsap,motion}.ts    components/hero/network/*
+                        components/journey/*  +  components/ScrollJourney.tsx
 ```
 
 Зависимости направлены **вниз→вверх** только в одну сторону: компоненты импортируют данные,
@@ -34,6 +35,15 @@ lib/{gsap,motion}.ts    components/hero/network/*
 - **Ревилы:** `globals.css` прячет `html.js [data-reveal]{opacity:0}` (без JS контент виден — прогресс-энхансмент).
   `Reveal` проигрывает `fromTo(y:22→0, autoAlpha:0→1, ease:settle)` по ScrollTrigger, с `stagger` для гридов.
 - **Кинетический текст:** `KineticText` через SplitType бьёт на слова и оседает их по скроллу. Только манифест.
+- **Якоря:** `SmoothScroll` перехватывает клики по `a[href^="#"]` и ведёт их через `lenis.scrollTo(target,
+  { duration: dur.scene, easing: settle })` → CSS/GSAP/Lenis-паритет; после прибытия фокус на цель
+  (`tabindex=-1`). Lenis сам вычитает `scroll-margin-top` цели и `scroll-padding-top` корня (`--header-h`) —
+  единственный источник отступа. Нативный `anchors:true` Lenis не используется: он не делает
+  `preventDefault`, нативный прыжок срабатывает первым и Lenis «снапает» назад на следующем кадре (вспышка,
+  хуже — в запиненный герой). Хэш при загрузке: нативный прыжок случается до появления спейсера пина →
+  после `ScrollTrigger.refresh()` делается `lenis.resize()` (limit Lenis измерен до спейсера) и
+  `lenis.scrollTo(location.hash, { immediate, force })`; повтор после `fonts.ready`, если пользователь ещё
+  не скроллил (подробности — в разделе про нить).
 
 ## Живая сеть «Ядро» (сердце) — components/hero/network/
 
@@ -104,10 +114,111 @@ lib/{gsap,motion}.ts    components/hero/network/*
 MeshTransmissionMaterial, RoomEnvironment/PMREM, @react-three/postprocessing, gsap, three-stdlib, gainmap-js.
 Проверка: `f=$(grep -l WebGLRenderer .next/static/chunks/*.js); gzip -c $f | wc -c`.
 
-## Адаптивный хедер
-`Header` (клиент) по `window.scrollY > 0.7·vh` переключает: прозрачный фон + светлый текст (поверх
-тёмного героя) ↔ костяной blur-фон + тёмный текст (поверх светлого контента). Так нет чужеродной
-светлой плашки на тёмном герое.
+## Скролл-путешествие (нить) — components/ScrollJourney.tsx + components/journey/
+
+**Закон один:** кончик нити всегда лежит на линии `tipLine` = 72 % вьюпорта. Герой отдаёт след из ядра
+(сид), дальше каждая секция рисует свой 1-px хребет в левом гаттере собственным скрабом от `top 72%`
+до `bottom+=tipLen 72%`: триггер на `tipLen` длиннее секции, хребет масштабируется до `(H+tipLen)/H`
+(перебор режет `overflow-clip` слоя), кончик уезжает с `−tipLen` до `H` — целиком из клипа. На шве кончик
+секции A наполовину вышел, кончик B наполовину вошёл (тот же x, тот же градиент) → один кончик, без
+«пеньков» внизу пройденных секций; в последней секции хребет спускается к
+индексу и уходит горизонтальной ножкой в пульс-точку футера. Когда нарисованная длина проходит узел,
+узел вспыхивает (`nodeFlash`) → оседает, а подчёркивание шапки дорисовывается из него (`settle`, 0.9 с).
+
+**DOM-контракт** (каждая сшиваемая секция):
+- `data-journey-section` + `data-surface="dark|bone"` на `<section>`/`<footer>`; `py` секции переносится на
+  `Container` (`relative`), первый ребёнок Container'а — `<ThreadLayer/>` (серверный, без JS: хребет +
+  кончик в клипнутом столбике `left: gutter/2`; `end` добавляет ножку в `[data-thread-end]`). Последняя
+  секция — `data-journey-last`.
+- Узлы: `SectionHead` рисует `[data-stitch-line]` (вместо `border-b`) + `[data-stitch-node]` на хребте;
+  Manifesto/Contact — узел ряда (`.stitch-node--row`) у индекса. Пара узел↔линия — через
+  `node.parentElement`. `.stitch-node` стоит на `left: -gutter/2` от контента → та же x, что у хребта
+  (ширина Container'а и gutter одинаковы во всех секциях и в герое → нить коллинеарна без JS-позиционирования).
+- Карточки: `[data-node]` — квадрат-узел, ховер зажигает его CSS-ом (`scale(1.35)`, только fine pointer).
+- Герой: обёртка `[data-hero-pin][data-surface="dark"]` — **нативный pinSpacer** ScrollTrigger (React-owned,
+  без репарентинга) и триггер поверхности хедера; `<HeroSeed/>` — сид (h → vA → клипнутый vB с кончиком),
+  единственная JS-позиционируемая геометрия (пишется на measure из `journey.core`). Копия — пять групп
+  `[data-hero-copy]`; CSS её не прячет, `from`/`set` её не трогают → LCP нетронут. Секция-пин — **block**
+  (центровка во внутреннем flex-div): `_swapPinIn` копирует `display` пина на спейсер, flex-секция стала бы
+  flex-элементом обёртки и на каждом refresh ужималась бы до ширины контента (канвас и сид уезжали).
+- `id="top"` живёт на `<main>` (во время пина секция `position:fixed`, её rect ≠ смещение в документе).
+
+**Ветки** (`gsap.matchMedia`, строки медиазапросов — единственное определение ярусов, зеркалит `NETWORK.tiers`):
+- `fine` `(min-width: 768px) and (hover: hover) and (pointer: fine)` + герой «помещается» (высота секции минус
+  нижний padding Container'а ≤ vh + `fitSlack`; нижний отступ — пустота, во время пина он уходит за край,
+  контент виден целиком) → **pinned**:
+  пин на `pinVh` (0.8 vh), `scrub` 0.6; таймлайн длительностью 1 → позиции = p: `journey.setProgress(p)`
+  (камера, доворот, анти-рост, приглушение, усадка ядра, **дрейф ядра к центру**), копия уезжает
+  (`copyOut`, ease scene, stagger) и гаснет (`copyFade`, autoAlpha → CTA нефокусируемы), сид `seed`
+  (0.82–0.9 горизонталь от ядра, 0.9–1 вертикаль до линии кончика). Нога Б (от линии кончика до низа героя)
+  — триггер контейнера Works `top ${heroH}px → top+=tipLen 72%` (= `top bottom`, когда герой ровно vh;
+  стартует точно в конце пина и при герое выше vh на свой нижний отступ; хвост `tipLen` — выход кончика).
+- `coarse` (точное дополнение) или высокий герой → **flow**: без пина и твинов копии, дайв скрабом за
+  `diveEnd` px = min(`flow.diveVh`·vh, `core.end.y − headerH − coreClear·vh` (но ≥ `diveMinVh`·vh),
+  `heroH − tipLine·vh`). Второе слагаемое — ядро в конце дайва остаётся видимым под хедером: след покидает
+  его на глазах (на мобайле ядро стоит в верхней пятой героя, за 0.45 vh оно уходило под хедер). Третье —
+  поправка к спеке: линия кончика в герое = `diveEnd + 0.72·vh` **≤ низа героя**, т.е. при p = 1 кончик сида
+  ровно там, где стартует хребет Works; прежний clamp `min(diveVh·vh + 0.72·vh, heroH)` при герое ниже
+  `(diveVh + tipLine)·vh` ≈ 1.17 vh (напр. 768×1024) давал дыру на стыке — хребет Works стартовал раньше, чем
+  сид дошёл до него. Нога Б от самого героя `top+=tipY 72% → bottom+=tipLen 72%`, создаётся всегда
+  (при vbH = 0 слой нулевой высоты невидим; геометрия перечитывается на refresh — одноразовых ворот нет).
+- `reduced` → **static**: ни пина, ни скраба, `journey.progress` = 0; хребты/сид в масштабе 1, кончики
+  скрыты, узлы/линии показаны CSS-override; сид привязан к `journey.core.rest`.
+- Смена «помещается/не помещается» по resize → `buildHero()` пересобирает ветку героя в своём
+  `gsap.context` на событии `refresh` (и снимает `is-diving`: revert убивает пин без `onToggle(false)`);
+  смена медиа → `matchMedia` сам ревертит и пересобирает; при входе в контекст флаги «узел зажжён»
+  сбрасываются (таймлайны узлов ревертнуты → scale 0 из CSS), чтобы первый `stitch()` зажёг уже пройденные.
+- Досшивка после `refresh`: внутри refresh ST ставит прогресс скрабленного таймлайна напрямую и с
+  подавлением событий (`animation.totalProgress(clipped, true)`), `onUpdate`/`stitch()` не зовётся → после
+  каждого глобального `refresh` узлы досшиваются по фактическому `tl.progress()` (иначе глубокая ссылка
+  `/#contact` — прыжок, следом refresh по `fonts.ready` — оставляла узлы Манифеста и Контакта незажжёнными).
+
+**Измерение** — только в `measure()`: синхронно до создания триггеров и на `ScrollTrigger` **`refreshInit`**
+(до revert/re-apply пинов; все чтения локальны секциям — `offsetTop/offsetLeft` по цепочке `offsetParent`
+без transform-ов, поэтому `y:22` Reveal и пин не мешают). Нулевые чтения в кадре: по кадру только
+transform/opacity (копия, 2 сида, ≤ 2 активных хребта + кончика, изредка таймлайн узла). Падение measure →
+`html.journey` снимается, шапки остаются с CSS-линиями (прогресс-энхансмент, как и no-JS).
+
+**`journey.core` + `onLayout`:** `LivingNetwork` на каждом resize канваса проецирует ядро в CSS px
+(`projectAt`: rest при `camZ`, end при `camZEnd` и смещении `·(1 − center)`) и зовёт `journey.emitLayout()`;
+`ScrollJourney` делает `ScrollTrigger.refresh()` только если точка сдвинулась > 1 px. До монтирования чанка
+сид скрыт. Тень под текстом снимается по `shadeOff` (копия уезжает — приглушать нечего).
+
+**Проверенные факты ST/Lenis (gsap 3.15, lenis 1.3.25), на которые опирается код:**
+- `_swapPinIn` обнуляет padding нативного спейсера и ставит `height`; с дефолтным `pinSpacing` ST на каждом
+  refresh пишет `paddingBottom = distance` и border-box `height = pinH + distance` на нашу обёртку, на revert
+  восстанавливает её inline-состояние; при `pin.parentNode === spacer` не репарентит. Поэтому: React-обёртка +
+  `pinSpacer` + дефолтный spacing, никакого CSS-резерва места (его бы стёрли). На scrollY 0 сдвиг ниже фолда
+  → без CLS.
+- `_refreshAll`: `refreshInit → sort → revert pins → refresh каждого (refreshPriority убыв., затем по порядку
+  страницы) → re-clamp end:"max" → "refresh"`. Пин героя `refreshPriority: 1` → спейсер на месте, когда
+  меряются Header/нити/Reveal. Функциональные `end`/значения перечитываются внутри refresh триггера
+  (`invalidateOnRefresh`); function-based `duration` GSAP при `invalidate` **не** пересчитывает → таймлайн
+  последней секции пересобирается, если доля «вертикаль/ножка» изменилась.
+- `pinType: "fixed"`: Lenis 1.3 скроллит окно нативно (`window.scrollTo` каждый raf) → фиксированный пин
+  точен; `"transform"` нужен только для трансформированных скроллеров. Без `normalizeScroll`.
+  `ScrollTrigger.config({ ignoreMobileResize: true })` явно (= дефолт на тач): изменения высоты < 25 % не
+  штормят refresh при схлопывании адресной строки.
+- `end: "max"` у последней секции: пульс-точка (~60 px над концом документа) никогда не дойдёт до 72 % →
+  остаток мапится на [Contact top на 72 %, max scroll]; ST ре-клампит "max" после всех пинов.
+- Перезагрузка посреди страницы: браузер восстанавливает scrollY до появления спейсера → точка на 0.8 vh
+  короче. Принято; `scrollRestoration` не трогаем.
+- Lenis `autoResize` (ResizeObserver) видит спейсер; `lenis.on("scroll", ScrollTrigger.update)`; на тач
+  (`syncTouch:false`) Lenis переизлучает нативные события.
+- Хэш при загрузке: Lenis мерит `limit` в конструкторе (до спейсера) и клампит `scrollTo` по нему, а
+  перемеряет только дебаунснутым ResizeObserver → перед прыжком `lenis.resize()` (иначе `/#contact` не
+  доезжал на высоту спейсера и показывал Манифест). `html { scroll-behavior: auto }` (не smooth): нативный
+  smooth-скролл к хэшу при загрузке идёт на компоузиторе, и его недоигранная дельта (13–50 px, зависит от
+  тайминга гидрации) сливалась поверх мгновенного прыжка Lenis → цель мимо 64 px; плавность якорей — дело
+  Lenis. После `fonts.ready` прыжок повторяется (страховка от перетёкшего контента над целью), пока
+  пользователь сам не скроллил (wheel/touch/key/pointer).
+
+## Хедер по поверхностям
+`Header` (клиент) не слушает scrollY: на каждый `[data-surface]` создаётся `ScrollTrigger` по линии низа
+хедера (`top/bottom ${--header-h}px`), `onToggle` активного пишет `surface`. Тёмная поверхность → прозрачный
+фон + светлый текст, костяная → blur-фон + тёмный текст. Обёртка героя — pinSpacer, её высота включает
+спейсер → хедер прозрачен весь пин и над тёмным Works (раньше порог `0.7·vh` давал костяную плашку на
+тёмном). Это состояние, не моушн → работает в reduced-motion и с нативным скроллом.
 
 ## Фазы
 Готово 0–3. Дальше: фаза 4 — `app/api/assistant/route.ts` + `@anthropic-ai/sdk` (серверный ключ);

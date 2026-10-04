@@ -1,6 +1,7 @@
 import { Container } from "@/components/ui/Container";
 import { SectionHead } from "@/components/ui/SectionHead";
 import { Reveal } from "@/components/Reveal";
+import { ThreadLayer } from "@/components/journey/ThreadLayer";
 import { services, servicesIntro } from "@/lib/content/services";
 
 export function Services() {
@@ -8,9 +9,12 @@ export function Services() {
     <section
       id="services"
       aria-labelledby="services-title"
-      className="bg-bone py-[clamp(72px,10vw,128px)]"
+      data-journey-section
+      data-surface="bone"
+      className="bg-bone"
     >
-      <Container>
+      <Container className="relative py-[clamp(72px,10vw,128px)]">
+        <ThreadLayer />
         <SectionHead index={servicesIntro.index} title={servicesIntro.title} titleId="services-title">
           <p className="m-0 max-w-[30rem] text-body leading-body text-ink-2">{servicesIntro.note}</p>
         </SectionHead>
@@ -27,7 +31,7 @@ export function Services() {
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[13px] tracking-[0.06em] text-ink-2">{s.n}</span>
-                <span aria-hidden className="h-[7px] w-[7px] rounded-[1px] bg-signal-ink" />
+                <span aria-hidden data-node className="h-[var(--node-size)] w-[var(--node-size)] rounded-[1px] bg-signal-ink" />
               </div>
               <h3 className="m-0 text-[1.4rem] font-semibold leading-[1.15] tracking-tight text-ink">
                 {s.title}

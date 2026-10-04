@@ -39,6 +39,7 @@ type State = {
   growthFired: boolean;
   firstFrame: boolean;
   armed: boolean;
+  place: { ox: number; oy: number }; // смещение ядра в покое (мировые единицы) — дрейф к центру по journey
 };
 type Tmp = {
   m: THREE.Matrix4; inv: THREE.Matrix4; hm: THREE.Matrix4; ray: THREE.Raycaster; v2: THREE.Vector2;
@@ -183,8 +184,14 @@ function build(tier: Tier) {
   return { lattice, growth, sim, pointsGeo, pointAttrs, nodeMat, struts, hairs, hubs, hubHeatAttr, core, coreMat, halo, haloMat, spinG, frameG, dispose };
 }
 
-/** Размещение: центр/масштаб группы от размеров канваса (мировые единицы на плоскости z=0). */
-function placement(S: Built, tier: Tier, w: number, h: number) {
+/** Проекция точки (ox, oy, 0) мира в CSS px канваса при камере на оси z (без three-объектов). */
+function projectAt(ox: number, oy: number, camZ: number, w: number, h: number) {
+  const t = Math.tan(THREE.MathUtils.degToRad(C.frame.fov / 2)), a = w / h;
+  return { x: ((ox / (t * a * camZ) + 1) / 2) * w, y: ((1 - oy / (t * camZ)) / 2) * h };
+}
+
+/** Размещение: центр/масштаб группы от размеров канваса (мировые единицы на плоскости z=0). Возвращает смещение ядра. */
+function placement(S: Built, tier: Tier, w: number, h: number): { ox: number; oy: number } {
   const vw = VH_WORLD * (w / h);
   const F = C.frame;
   let ox: number, oy: number, s: number;
@@ -201,6 +208,7 @@ function placement(S: Built, tier: Tier, w: number, h: number) {
   S.frameG.position.set(ox, oy, 0);
   S.frameG.scale.setScalar(s);
   S.nodeMat.uniforms.uDepthRange.value = C.lattice.R0 * s;
+  return { ox, oy };
 }
 
 /** Прямоугольники h1/лида в NDC канваса — под ними структура приглушается. */
@@ -208,7 +216,7 @@ function measureRects(canvas: HTMLCanvasElement): Rect[] {
   const c = canvas.getBoundingClientRect();
   if (!c.width || !c.height) return [];
   const out: Rect[] = [];
-  document.querySelectorAll("#top [data-hero-text]").forEach((el) => {
+  document.querySelectorAll("#hero [data-hero-text]").forEach((el) => {
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) return;
     out.push({
@@ -221,15 +229,16 @@ function measureRects(canvas: HTMLCanvasElement): Rect[] {
   return out;
 }
 
-/** Тень под текстом: проекция узлов (позиции прошлого кадра — лаг в кадр невидим) → sim.shade. */
-function computeShade(S: Built, rects: Rect[], camera: THREE.Camera, m: THREE.Matrix4) {
+/** Тень под текстом: проекция узлов (позиции прошлого кадра — лаг в кадр невидим) → sim.shade.
+ *  p — прогресс journey: пока копия уезжает (shadeOff), тень снимается. */
+function computeShade(S: Built, rects: Rect[], camera: THREE.Camera, m: THREE.Matrix4, p: number) {
   const { sim } = S;
   const { shade, positions: pos, N } = sim;
-  if (!rects.length) { shade.fill(1, 0, N); return; }
+  const dim = (1 - C.shade.min) * (1 - smoothstep(C.journey.shadeOff[0], C.journey.shadeOff[1], p));
+  if (!rects.length || dim <= 0) { shade.fill(1, 0, N); return; }
   m.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(S.spinG.matrixWorld);
   const e = m.elements;
   const f = C.shade.feather;
-  const dim = 1 - C.shade.min;
   for (let i = 0; i < N; i++) {
     const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
     const cw = e[3] * x + e[7] * y + e[11] * z + e[15];
@@ -301,7 +310,7 @@ function flush(S: Built, camera: THREE.Camera, tmp: Tmp) {
 /** reduced-motion: один статичный кадр — та картинка, в которую оседает анимация. Без invalidate — его зовёт вызывающий. */
 function renderStatic(S: Built, st: State, tmp: Tmp, tier: Tier, camera: THREE.Camera, scene: THREE.Scene, w: number, h: number) {
   const { sim } = S;
-  placement(S, tier, w, h);
+  st.place = placement(S, tier, w, h); // p = 0: ядро на месте покоя
   camera.position.z = C.frame.camZ;
   camera.updateMatrixWorld();
   const R0s = C.lattice.R0 * S.frameG.scale.x;
@@ -311,7 +320,7 @@ function renderStatic(S: Built, st: State, tmp: Tmp, tier: Tier, camera: THREE.C
   S.frameG.rotation.set(0, 0, 0);
   S.frameG.updateMatrixWorld(true);
   sim.stepStatic();
-  computeShade(S, st.rects, camera, tmp.m); sim.stepStatic(); // второй проход — связи с учётом тени (оба тира)
+  computeShade(S, st.rects, camera, tmp.m, 0); sim.stepStatic(); // второй проход — связи с учётом тени (оба тира)
   S.nodeMat.uniforms.uIntensity.value = tier === "mobile" ? C.mobile.intensity : 1;
   flush(S, camera, tmp);
   if (!journey.assembled) { journey.assembled = true; journey._resolvers.splice(0).forEach((r) => r()); }
@@ -326,7 +335,7 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
   const st = useMemo<State>(() => ({
     ptr: { nx: 0, ny: 0, inside: false }, par: { yaw: 0, pitch: 0 }, rects: [], shocks: [],
     pointer: { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1, active: false },
-    growthFired: false, firstFrame: true, armed: false,
+    growthFired: false, firstFrame: true, armed: false, place: { ox: 0, oy: 0 },
   }), []);
   const tmp = useMemo<Tmp>(() => ({
     m: new THREE.Matrix4(), inv: new THREE.Matrix4(), hm: new THREE.Matrix4(), ray: new THREE.Raycaster(),
@@ -360,7 +369,16 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
     S.struts.mat.resolution.set(size.width, size.height);
     S.hairs.mat.resolution.set(size.width, size.height);
     S.nodeMat.uniforms.uDpr.value = dpr;
-    placement(S, tier, size.width, size.height);
+    const { ox, oy } = placement(S, tier, size.width, size.height);
+    st.place = { ox, oy };
+    // проекция ядра в CSS px секции — для сида нити (ScrollJourney). Параллакс вращает frameG вокруг
+    // ядра, поэтому точка статична на layout; end = конец дайва (camZEnd + дрейф к центру).
+    const k = 1 - C.journey.center;
+    journey.core = {
+      rest: projectAt(ox, oy, C.frame.camZ, size.width, size.height),
+      end: projectAt(ox * k, oy * k, C.journey.camZEnd, size.width, size.height),
+    };
+    journey.emitLayout();
     st.rects = measureRects(gl.domElement);
     invalidate();
   }, [S, st, tier, gl, size.width, size.height, dpr, invalidate]);
@@ -461,6 +479,9 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
     const T = sim.simTime;
     const p = journey.progress;
     if (st.firstFrame) { st.firstFrame = false; st.rects = measureRects(gl.domElement); }
+    // дрейф ядра к центру сцены по ходу дайва (та же кривая, что у камеры)
+    const q = quintInOut(p);
+    S.frameG.position.set(st.place.ox * (1 - C.journey.center * q), st.place.oy * (1 - C.journey.center * q), 0);
 
     // 3. риг: камера/туман оседают после роста; орбита; параллакс от курсора
     const settle = expoOut(T / C.growth.settle);
@@ -480,8 +501,8 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
     S.frameG.rotation.set(st.par.pitch, st.par.yaw, 0);
     S.frameG.updateMatrixWorld(true);
 
-    // 4. тень под текстом (оба тира: на мобайле решётка лежит за h1/лидом)
-    computeShade(S, st.rects, camera, tmp.m);
+    // 4. тень под текстом (оба тира: на мобайле решётка лежит за h1/лидом); снимается по shadeOff
+    computeShade(S, st.rects, camera, tmp.m, p);
 
     // 5. луч курсора в локальном пространстве
     const active = look && journey.visible;

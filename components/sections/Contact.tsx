@@ -1,5 +1,7 @@
+import { Container } from "@/components/ui/Container";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Reveal } from "@/components/Reveal";
+import { ThreadLayer } from "@/components/journey/ThreadLayer";
 import { contact } from "@/lib/content/contact";
 
 export function Contact() {
@@ -7,12 +9,20 @@ export function Contact() {
     <footer
       id="contact"
       aria-labelledby="contact-title"
-      className="bg-bone px-[var(--gutter)] py-[clamp(72px,10vw,128px)] pb-12"
+      data-journey-section
+      data-journey-last
+      data-surface="bone"
+      className="bg-bone"
     >
-      <div className="mx-auto w-full max-w-[var(--container-max)]">
+      {/* последняя секция: нить спускается к индексу и уходит горизонтально в пульс-точку ([data-thread-end]) */}
+      <Container className="relative py-[clamp(72px,10vw,128px)] pb-12">
+        <ThreadLayer end />
         <Reveal className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-end gap-[clamp(40px,6vw,96px)] border-b border-hairline pb-16">
           <div>
-            <MonoLabel tone="signal-ink">{contact.index}</MonoLabel>
+            <div className="relative">
+              <i aria-hidden data-stitch-node className="stitch-node stitch-node--row" />
+              <MonoLabel tone="signal-ink">{contact.index}</MonoLabel>
+            </div>
             <h2
               id="contact-title"
               className="mt-[18px] text-[clamp(2.2rem,5vw,4.2rem)] font-semibold leading-[1.02] tracking-display text-ink"
@@ -51,12 +61,12 @@ export function Contact() {
 
         <div className="flex flex-wrap items-center justify-between gap-4 pt-7">
           <div className="flex items-center gap-[10px] font-mono text-[12px] tracking-[0.06em] text-ink-2">
-            <span aria-hidden className="slk-pulse h-2 w-2 rounded-[1px] bg-signal-ink" />
+            <span aria-hidden data-thread-end className="slk-pulse h-2 w-2 rounded-[1px] bg-signal-ink" />
             <span>{contact.legal}</span>
           </div>
           <span className="font-mono text-[12px] tracking-[0.06em] text-ink-2">{contact.stack}</span>
         </div>
-      </div>
+      </Container>
     </footer>
   );
 }

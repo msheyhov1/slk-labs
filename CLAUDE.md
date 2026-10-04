@@ -64,6 +64,9 @@
 Одна грамматика на весь сайт: контент **собирается и связывается** (не «фейдится»), линии дорисовываются,
 разделы сшиваются нитью по скроллу, ховер зажигает узел. Сигнатурный easing — `expo.out` («оседание»).
 Ревилы быстро оседают в покой. `prefers-reduced-motion` → анимации выключены, живая сеть → статичная структура.
+**Сшивка реализована** (`components/ScrollJourney.tsx`): герой запинен и «ныряет» по скроллу, из ядра
+выходит нить, её кончик всегда на 72 % вьюпорта, узлы шапок вспыхивают и дорисовывают подчёркивания,
+нить уходит в пульс-точку футера. Reduced → статичная нить, без пина/скраба.
 
 ---
 
@@ -76,16 +79,20 @@
 slk-labs/
 ├── app/
 │   ├── layout.tsx            # шрифты (Geist latin+cyrillic), метаданные ← lib/site, Header, SmoothScroll
-│   ├── page.tsx              # композиция: <Hero/><Works/><Services/><Manifesto/><Contact/>
+│   ├── page.tsx              # композиция: <main id="top"><Hero/><Works/><Services/><Manifesto/></main><Contact/><ScrollJourney/>
 │   ├── globals.css           # @import tailwindcss + styles/tokens.css + база + reveal/keyframes
 │   └── icon.svg              # брендовый favicon
 ├── components/
-│   ├── Header.tsx            # КЛИЕНТ. Адаптивный: прозрачный+светлый на герое → костяной+тёмный при скролле (порог = 0.7·vh)
-│   ├── SmoothScroll.tsx      # КЛИЕНТ-провайдер. Lenis ↔ GSAP ticker ↔ ScrollTrigger; ставит <html class="js">
+│   ├── Header.tsx            # КЛИЕНТ. Поверхности [data-surface] через ScrollTrigger: прозрачный+светлый над тёмным ↔ костяной+тёмный над светлым
+│   ├── SmoothScroll.tsx      # КЛИЕНТ-провайдер. Lenis ↔ GSAP ticker ↔ ScrollTrigger; ставит <html class="js">; якоря через lenis.scrollTo; refresh/хэш
+│   ├── ScrollJourney.tsx     # КЛИЕНТ. Скролл-путешествие: ветки fine/coarse/reduced, пин+дайв героя, сид, нити секций, узлы (measure на refreshInit)
+│   ├── journey/
+│   │   ├── ThreadLayer.tsx   #   серверный: хребет + кончик (+ ножка в пульс-точку) — первый ребёнок Container'а секции
+│   │   └── HeroSeed.tsx      #   серверный: сид нити в герое (геометрию пишет ScrollJourney из journey.core)
 │   ├── Reveal.tsx            # КЛИЕНТ. Грамматика «сборки»: GSAP fromTo + ScrollTrigger (stagger по [data-reveal])
 │   ├── KineticText.tsx       # КЛИЕНТ. SplitType пословно + GSAP settle (единственная кинетика текста)
 │   ├── hero/
-│   │   ├── Hero.tsx          # секция героя ← lib/content/hero
+│   │   ├── Hero.tsx          # секция героя ← lib/content/hero; обёртка [data-hero-pin] = нативный pinSpacer; копия [data-hero-copy]
 │   │   ├── HeroNetwork.tsx   # КЛИЕНТ. IntersectionObserver → ленивый (dynamic ssr:false) слой сети, pointer-events:none
 │   │   └── network/          # ← ЖИВАЯ СЕТЬ «Ядро», разнесена:
 │   │       ├── config.ts     #   ВСЕ РУЧКИ (решётка/рост/физика/цвет/кадр/пост/качество)
@@ -93,7 +100,7 @@ slk-labs/
 │   │       ├── growth.ts     #   чистый порядок сборки: BFS, времена рождения, easing-хелперы
 │   │       ├── simulation.ts #   чистая физика (без three/react), владеет буферами, своё время simTime
 │   │       ├── shaders.ts    #   GLSL узлов+пыли, ядра, гало, инъекции хабов
-│   │       ├── journey.ts    #   стор прогресса/видимости/assembled (единственный файл сети в главном бандле)
+│   │       ├── journey.ts    #   стор прогресса/видимости/assembled + core (проекция ядра) и onLayout (единственный файл сети в главном бандле)
 │   │       ├── post.ts       #   композер: RenderPass → UnrealBloom → Output → FXAA (десктоп)
 │   │       ├── PostFX.tsx    #   КЛИЕНТ. Монтирует композер, useFrame priority 1
 │   │       └── LivingNetwork.tsx  # КЛИЕНТ. Canvas r3f + Scene: риг → тень → луч → sim.step → flush
@@ -137,10 +144,14 @@ slk-labs/
 | **Физику и вид живой сети** (тяга, чистая зона, радиус, плотность, зелёный) | `components/hero/network/config.ts` |
 | Форма решётки / рост / порядок сборки | `lattice.ts`, `growth.ts` (+ `config.lattice`/`config.growth`) |
 | Пост-обработка (bloom/FXAA) | `post.ts` (+ `config.post`) |
-| Прогресс скролла / видимость / assembled | `journey.ts` |
+| Прогресс скролла / видимость / assembled / проекция ядра | `journey.ts` |
 | Длительности/easing анимаций (GSAP) | `lib/motion.ts` |
+| **Пин/дайв героя, окна копии/сида, линия кончика, гистерезис узлов** | `lib/motion.ts` (`journey`) |
+| Сдвиг ядра к центру, снятие тени по ходу дайва | `config.ts` `journey.center` / `journey.shadeOff` |
+| Цвета нити / длина кончика / размер узла | `styles/tokens.css` `--color-thread*`, `--thread-tip-len`, `--node-size` |
+| Поверхность хедера над секцией | `data-surface="dark|bone"` на секции (Header слушает ScrollTrigger) |
 | Плавность скролла (инерция) | `components/SmoothScroll.tsx` (Lenis `lerp`) |
-| Прозрачность/порог переключения хедера | `components/Header.tsx` |
+| Якоря (длительность/easing прокрутки, фокус) | `components/SmoothScroll.tsx` (`lenis.scrollTo`) |
 | Грамматику ревилов | `components/Reveal.tsx` + `html.js [data-reveal]` в `globals.css` |
 
 **Инварианты (не нарушать):**
@@ -152,6 +163,12 @@ slk-labs/
 - Сцена ставится на паузу вне экрана (IO → `frameloop='demand'`); время симуляции идёт только внутри `step`.
 - Цвета из config переводятся в linear через `THREE.Color`, не вручную. lattice/growth/simulation — чистые (без three/react).
 - Ленивый 3D-чанк ≤ 350 KB gz; в нём нет gsap, drei Environment/Segments/Line, @react-three/postprocessing, three-stdlib.
+- Каждая новая секция несёт `data-journey-section` + `data-surface` + `<ThreadLayer/>` первым ребёнком Container'а,
+  а `py` секции лежит на Container'е (`relative`). Последняя — `data-journey-last` + `<ThreadLayer end/>` + `[data-thread-end]`.
+- `id="top"` живёт на `<main>`, никогда на запиненной секции. Копия героя не получает `data-reveal`/`from`-твинов (LCP).
+  Секция героя (пин) — `display:block` (ST копирует display пина на спейсер; flex ужал бы её до контента), центровка — во внутреннем div.
+- Строки медиазапросов в `ScrollJourney` — единственное определение ярусов (зеркалят `NETWORK.tiers`); CSS их не дублирует.
+- Скролл-путешествие — только GSAP/ScrollTrigger (без новых зависимостей); three-код только под `components/hero/network/`.
 
 ---
 

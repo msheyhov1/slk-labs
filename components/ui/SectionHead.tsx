@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { Reveal } from "@/components/Reveal";
 
-/** Шапка секции: моно-индекс + заголовок + правый слот (нота/мета). */
+/**
+ * Шапка секции: моно-индекс + заголовок + правый слот (нота/мета).
+ * Линия под шапкой не border, а рисуемая: узел нити ([data-stitch-node]) на хребте слева
+ * и подчёркивание ([data-stitch-line]), которое дорисовывается из узла, когда нить доходит до шапки
+ * (ScrollJourney). Без JS (нет html.journey) линия видна сразу.
+ */
 export function SectionHead({
   index,
   title,
@@ -17,11 +22,15 @@ export function SectionHead({
 }) {
   const dark = tone === "dark";
   return (
-    <Reveal
-      className={`flex flex-wrap items-end justify-between gap-6 border-b pb-8 ${
-        dark ? "border-[var(--color-hairline-on-ink)]" : "border-hairline"
-      }`}
-    >
+    <Reveal className="relative flex flex-wrap items-end justify-between gap-6 pb-8">
+      <i
+        aria-hidden
+        data-stitch-line
+        className={`absolute inset-x-0 bottom-0 h-px origin-left ${
+          dark ? "bg-[var(--color-hairline-on-ink)]" : "bg-hairline"
+        }`}
+      />
+      <i aria-hidden data-stitch-node className="stitch-node bottom-[calc(var(--node-size)/-2)]" />
       <div>
         <span
           className={`font-mono text-[13px] uppercase tracking-label ${

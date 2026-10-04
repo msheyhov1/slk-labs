@@ -8,8 +8,11 @@ html {
   height: 100%;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  scroll-behavior: smooth;
-  scroll-padding-top: var(--header-h); /* якоря не уезжают под фикс-хедер */
+  /* auto, не smooth: плавность якорей — дело Lenis. Нативный smooth-скролл к #хэшу при загрузке живёт на
+     компоузиторе, и его недоигранная дельта (13–50 px) сливалась в мгновенный прыжок Lenis после появления
+     спейсера пина → глубокие ссылки не попадали на 64 px. */
+  scroll-behavior: auto;
+  scroll-padding-top: var(--header-h); /* якоря не уезжают под фикс-хедер (Lenis читает то же значение) */
 }
 
 body {
@@ -29,6 +32,9 @@ body {
   outline-offset: 3px;
   border-radius: 1px;
 }
+/* цель якоря (секция / main, tabindex=-1 ставит SmoothScroll): фокус программный, рамка во всю ширину
+   у верхней кромки секции читалась бы как лишний разделитель; Tab дальше идёт внутрь секции как обычно */
+main[tabindex="-1"]:focus-visible, [data-journey-section][tabindex="-1"]:focus-visible { outline: none; }
 
 /* Lenis: пока скрипт не поднялся — нативный скролл; при reduced-motion — тоже. */
 html.lenis, html.lenis body { height: auto; }
@@ -43,7 +49,6 @@ html.lenis, html.lenis body { height: auto; }
 html.js [data-reveal] { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
   html.js [data-reveal] { opacity: 1 !important; transform: none !important; }
   /* глушим любые CSS-переходы/анимации (в т.ч. transition-colors хедера) */
   *, *::before, *::after {
@@ -52,6 +57,39 @@ html.js [data-reveal] { opacity: 0; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================================
+   Scroll journey: нить, узлы, сид в герое. Переменные поверхности → контраст-закон:
+   signal только как свет на тёмном; на костяном — signal-ink и графит.
+   Состояния «скрыто до прихода нити» включаются классом html.journey (ставит ScrollJourney
+   после успешного измерения) → при падении JS линии шапок остаются видимыми.
+   ============================================================ */
+[data-surface="dark"] { --thread: var(--color-thread-on-ink); --thread-tip: var(--color-signal);     --thread-node: var(--color-signal); }
+[data-surface="bone"] { --thread: var(--color-thread);        --thread-tip: var(--color-signal-ink); --thread-node: var(--color-signal-ink); }
+
+.thread-tip    { background: linear-gradient(to bottom, transparent, var(--thread-tip)); }
+.thread-seed-h { background: linear-gradient(to left, rgb(var(--color-signal-rgb) / 0.7), var(--thread)); } /* свет покидает ядро */
+
+.stitch-node { position: absolute; left: calc(var(--gutter) / -2 - var(--node-size) / 2); width: var(--node-size); height: var(--node-size); border-radius: 1px; background: var(--thread-node); }
+.stitch-node--row { top: 50%; margin-top: calc(var(--node-size) / -2); }
+[data-surface="dark"] .stitch-node { box-shadow: 0 0 8px rgb(var(--color-signal-rgb) / 0.5); } /* = .signal-glow, только на тёмном */
+
+[data-thread-spine], [data-thread-tip], [data-thread-end-leg], [data-seed] { visibility: hidden; }
+html.journey [data-thread-spine], html.journey [data-thread-tip], html.journey [data-thread-end-leg], html.journey [data-seed] { visibility: visible; }
+html.journey [data-stitch-node] { transform: scale(0); }
+html.journey [data-stitch-line] { transform: scaleX(0); }
+
+.is-diving [data-hero-copy] { will-change: transform, opacity; } /* только пока герой запинен */
+
+@media (hover: hover) and (pointer: fine) {
+  [data-node] { transition: transform var(--dur-short) var(--ease-out-expo); }
+  a:hover [data-node], article:hover [data-node] { transform: scale(1.35); } /* ховер зажигает узел */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.journey [data-stitch-node], html.journey [data-stitch-line] { transform: none !important; }
+  html.journey [data-thread-tip], html.journey [data-seed-tip] { display: none; }
 }
 
 /* ============================================================

@@ -70,6 +70,12 @@
   --color-ink-deep: #0F1215;                     /* глубже ink: hatch-фон, ховер тёмных кнопок */
   --color-signal-rgb: 0 224 138;                 /* signal в rgb() для прозрачных свечений */
 
+  /* нить (journey): семантические линии — не декоративный --color-hairline */
+  --color-thread-on-ink: rgba(242, 240, 233, 0.32); /* костяная нить на ink */
+  --color-thread: rgba(20, 23, 26, 0.26);           /* графитовая нить на костяном (ink-opacity) */
+  --thread-tip-len: 56px;                            /* = motion.journey.tipLen */
+  --node-size: 7px;                                  /* узел нити / квадраты карточек */
+
   /* layout */
   --container-max: 88rem;   /* 1408 */
   --container-text: 38rem;  /* ширина чтения */

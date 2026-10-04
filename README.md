@@ -25,7 +25,8 @@ npm run build && npm run start  # прод-сборка локально
 ```
 app/                layout · page · globals.css · icon.svg
 components/
-  Header · SmoothScroll (Lenis↔GSAP) · Reveal · KineticText (SplitType)
+  Header · SmoothScroll (Lenis↔GSAP) · Reveal · KineticText (SplitType) · ScrollJourney (нить)
+  journey/ThreadLayer · journey/HeroSeed
   hero/Hero · hero/HeroNetwork (lazy)
     hero/network/   config · shaders · simulation · LivingNetwork   ← живая сеть (three/r3f)
   sections/         Works · Services · Manifesto · Contact
@@ -41,7 +42,8 @@ docs/SLK-labs_Design_Tokens.md
 
 **Где что крутить:** токены/цвет — `styles/tokens.css`; текст — `lib/content/*`; кейсы — `lib/cases.ts`;
 нав/SEO — `lib/site.ts`; **физика/вид живой сети — `components/hero/network/config.ts`**;
-плавность скролла — `components/SmoothScroll.tsx`; хедер — `components/Header.tsx`.
+плавность скролла — `components/SmoothScroll.tsx`; хедер — `components/Header.tsx`;
+скролл-путешествие (пин героя, нить, узлы) — `lib/motion.ts` (`journey`).
 
 ## Принципы (из CLAUDE.md)
 
