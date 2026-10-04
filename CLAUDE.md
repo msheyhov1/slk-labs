@@ -94,9 +94,9 @@ slk-labs/
 │   ├── hero/
 │   │   ├── Hero.tsx          # секция героя ← lib/content/hero; обёртка [data-hero-pin] = нативный pinSpacer; копия [data-hero-copy]
 │   │   ├── HeroNetwork.tsx   # КЛИЕНТ. IntersectionObserver → ленивый (dynamic ssr:false) слой сети, pointer-events:none
-│   │   └── network/          # ← ЖИВАЯ СЕТЬ «Ядро», разнесена:
+│   │       └── network/          # ← ЖИВАЯ СЕТЬ «Блок» (вложенные кубы на сетке в чертёжной рамке), разнесена:
 │   │       ├── config.ts     #   ВСЕ РУЧКИ (решётка/рост/физика/цвет/кадр/пост/качество)
-│   │       ├── lattice.ts    #   чистая форма: seed-RNG, fbm, оболочки, маска, линза, рёбра, хабы, пыль
+│   │       ├── lattice.ts    #   чистая форма БЕЗ случайности: сетка (i,j,k), кольца-кубы, линии граней, спицы, бусины, рамка
 │   │       ├── growth.ts     #   чистый порядок сборки: BFS, времена рождения, easing-хелперы
 │   │       ├── simulation.ts #   чистая физика (без three/react), владеет буферами, своё время simTime
 │   │       ├── shaders.ts    #   GLSL узлов+пыли, ядра, гало, инъекции хабов
@@ -143,7 +143,8 @@ slk-labs/
 | Чертежи-обложки кейсов (глобус / решётка / лента) | `lib/blueprint.ts` + CSS `.bp` в `globals.css` |
 | Навигацию / SEO-метаданные / контакты | `lib/site.ts` |
 | **Физику и вид живой сети** (тяга, чистая зона, радиус, плотность, зелёный) | `components/hero/network/config.ts` |
-| Форма решётки / рост / порядок сборки | `lattice.ts`, `growth.ts` (+ `config.lattice`/`config.growth`) |
+| **Форму блока** (кольца, линии граней `full/odd/none`, бусины, рамка/шкала, пунктирные осевые, орбита) | `config.ts` `lattice.*` / `orbit` (правила — `lattice.ts`) |
+| Рост / порядок сборки | `growth.ts` (+ `config.growth`) |
 | Пост-обработка (bloom/FXAA) | `post.ts` (+ `config.post`) |
 | Прогресс скролла / видимость / assembled / проекция ядра | `journey.ts` |
 | Длительности/easing анимаций (GSAP) | `lib/motion.ts` |

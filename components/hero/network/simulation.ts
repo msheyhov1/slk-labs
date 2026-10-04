@@ -1,9 +1,9 @@
-// Симуляция «Ядра» — чистая, БЕЗ three/react. Владеет всеми буферами (атрибуты геометрий
+// Симуляция «Блока» — чистая, БЕЗ three/react. Владеет всеми буферами (атрибуты геометрий
 // ссылаются прямо на них, без копий). Своё время simTime продвигается только внутри step() →
 // пауза вне экрана невидима для роста/пакетов/ударов. Всё — функция (simTime, progress),
-// поэтому скраб скролла назад точен.
+// поэтому скраб скролла назад точен. Рамка/осевые — тоже здесь (дорисовка по хопам, ретракт на дайве).
 import { NETWORK as C, type Tier } from "./config";
-import type { Lattice } from "./lattice";
+import type { Lattice, FrameSegments } from "./lattice";
 import { type Growth, growFactor, expoOut, smoothstep } from "./growth";
 
 /** Луч курсора в ЛОКАЛЬНОМ пространстве spin-группы (o + d·t, d — единичный). */
@@ -17,8 +17,9 @@ export type RGB = readonly [number, number, number];
 // вместо ~0.9 с. Отношение pull/spring (глубина туннеля у курсора) при этом сохранено.
 const FORCE = 60;
 
-const P = C.physics, HT = C.heat, S = C.shock, PK = C.packets, G = C.growth, J = C.journey;
+const P = C.physics, HT = C.heat, S = C.shock, PK = C.packets, G = C.growth, J = C.journey, FR = C.lattice.frame;
 const R0 = C.lattice.R0;
+const ALONG = P.alongNormal; // доля тяги курсора, спроецированная на нормаль узла
 const R = P.influence * R0; // радиус реакции на курсор, локальные единицы
 const CLEAR_R = P.clearZone * R; // чистая зона (туннель)
 
@@ -40,8 +41,11 @@ export class LatticeSimulation {
   readonly hubPos: Float32Array; // H*3
   readonly hubHeat: Float32Array; // H
   readonly hubScale: Float32Array; // H
+  readonly framePos: Float32Array; // frame.count*6 — уголки / шкала / рёбра ядра (fixed, free)
+  readonly axesPos: Float32Array; // axes.count*6 — осевые через ядро
 
   // скаляры, читаемые рендером после step()
+  frameFactor = 0; // минимальная доля дорисовки рамки (0..1); < 1 — рамка в движении
   simTime = 0;
   tEff = 0;
   front = 0; // tEff / tMax, 0..1
@@ -59,6 +63,7 @@ export class LatticeSimulation {
   private readonly base: RGB;
   private readonly signal: RGB;
   private readonly tMax: number;
+  private readonly maxOff: number; // предел смещения узла от цели (сетка остаётся сеткой)
   private packetStart = -1;
   private nextPacket = 0;
 
@@ -86,6 +91,9 @@ export class LatticeSimulation {
     this.hubPos = new Float32Array(this.H * 3);
     this.hubHeat = new Float32Array(this.H);
     this.hubScale = new Float32Array(this.H);
+    this.framePos = Float32Array.from(lattice.frame.rest);
+    this.axesPos = Float32Array.from(lattice.axes.rest);
+    this.maxOff = P.maxOffset * lattice.pitch;
 
     for (let i = 0; i < N; i++) {
       this.meta[i * 4] = lattice.size[i];
@@ -185,12 +193,16 @@ export class LatticeSimulation {
         const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz) || 1e-4;
         if (dist < R) {
           const ux = ddx / dist, uy = ddy / dist, uz = ddz / dist;
-          const reach = Math.sin((dist / R) * Math.PI) * P.pull * FORCE;
-          accx += ux * reach; accy += uy * reach; accz += uz * reach;
-          if (dist < CLEAR_R) {
-            const rep = (1 - dist / CLEAR_R) * P.pull * 2.2 * FORCE;
-            accx -= ux * rep; accy -= uy * rep; accz -= uz * rep;
+          let fp = Math.sin((dist / R) * Math.PI) * P.pull * FORCE;
+          if (dist < CLEAR_R) fp -= (1 - dist / CLEAR_R) * P.pull * 2.2 * FORCE;
+          let fx = ux * fp, fy = uy * fp, fz = uz * fp;
+          if (ALONG > 0) {
+            // проекция на нормаль узла: грань выгибается целиком (линза), линии не ломаются по одной
+            const nx = normal[i3], ny = normal[i3 + 1], nz = normal[i3 + 2];
+            const dn = fx * nx + fy * ny + fz * nz;
+            fx += (nx * dn - fx) * ALONG; fy += (ny * dn - fy) * ALONG; fz += (nz * dn - fz) * ALONG;
           }
+          accx += fx; accy += fy; accz += fz;
           h = Math.max(h, (1 - dist / R) * HT.fromPointer);
         }
       }
@@ -213,6 +225,9 @@ export class LatticeSimulation {
       const vy = (vel[i3 + 1] + accy * dt) * fr;
       const vz = (vel[i3 + 2] + accz * dt) * fr;
       x += vx * dt; y += vy * dt; z += vz * dt;
+      // сетка остаётся сеткой: от цели не дальше maxOffset·a (удары и курсор гнут, но не рвут)
+      const ox = x - tx, oy = y - ty, oz = z - tz, od = Math.sqrt(ox * ox + oy * oy + oz * oz);
+      if (od > this.maxOff) { const s = this.maxOff / od; x = tx + ox * s; y = ty + oy * s; z = tz + oz * s; }
       vel[i3] = vx; vel[i3 + 1] = vy; vel[i3 + 2] = vz;
       pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
       h = Math.max(h, Math.min(1, Math.sqrt(vx * vx + vy * vy + vz * vz) * P.velocityHeat));
@@ -246,9 +261,10 @@ export class LatticeSimulation {
     if (running) halo += PK.halo * Math.exp(-2 * (T - this.packetStart));
     this.halo = halo * (1 - progress);
 
-    // 7–8. связи и хабы
+    // 7–9. связи, хабы, рамка
     this.fillLinks(false);
     this.fillHubs();
+    this.fillFrame(T, progress, false);
   }
 
   /** reduced-motion: собранная решётка одним выстрелом — ровно та картинка, в которую оседает анимация. */
@@ -271,6 +287,30 @@ export class LatticeSimulation {
     this.packetRunning = false;
     this.fillLinks(true);
     this.fillHubs();
+    this.fillFrame(0, 0, true);
+  }
+
+  /** Рамка и осевые: дорисовка от первого угла по хопам (expoOut), ретракт в конце дайва; рёбра ядра следуют за coreScale. */
+  private fillFrame(T: number, progress: number, full: boolean): void {
+    const retract = full ? 1 : 1 - smoothstep(FR.retract[0], FR.retract[1], progress);
+    const coreS = (full ? 1 : this.coreScale) * FR.coreEdge;
+    let fmin = 1;
+    const write = (src: FrameSegments, out: Float32Array) => {
+      for (let s = 0; s < src.count; s++) {
+        const o = s * 6;
+        const f = (full ? 1 : expoOut((T - FR.start - src.hop[s] * FR.hopDelay) / FR.dur)) * retract;
+        if (f < fmin) fmin = f;
+        const sc = src.core[s] ? coreS : 1;
+        const x0 = src.rest[o] * sc, y0 = src.rest[o + 1] * sc, z0 = src.rest[o + 2] * sc;
+        out[o] = x0; out[o + 1] = y0; out[o + 2] = z0;
+        out[o + 3] = x0 + (src.rest[o + 3] * sc - x0) * f;
+        out[o + 4] = y0 + (src.rest[o + 4] * sc - y0) * f;
+        out[o + 5] = z0 + (src.rest[o + 5] * sc - z0) * f;
+      }
+    };
+    write(this.l.frame, this.framePos);
+    write(this.l.axes, this.axesPos);
+    this.frameFactor = fmin;
   }
 
   /** O(E): позиции и цвета концов рёбер. Корень = (0,0,0), grow 1, heat = pulse, shade 1. */

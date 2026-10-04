@@ -1,6 +1,6 @@
 "use client";
 
-// Рендер «Ядра» — единственный файл (кроме post.ts), трогающий three-объекты.
+// Рендер «Блока» — единственный файл (кроме post.ts), трогающий three-объекты.
 // Canvas + Scene: геометрии оборачивают буферы симуляции без копий; useFrame гонит риг
 // (камера/туман/орбита/параллакс) → тень под текстом → луч курсора → sim.step → flush.
 // Канвас pointer-events:none — курсор и клики слушаем на window, луч считаем сами.
@@ -28,7 +28,7 @@ import PostFX from "./PostFX";
 
 type Quality = 0 | 1 | 2;
 type Rect = { x0: number; x1: number; y0: number; y1: number }; // NDC
-type Lines = { geo: LineSegmentsGeometry; mat: LineMaterial; obj: LineSegments2 };
+type Lines = { geo: LineSegmentsGeometry; mat: LineMaterial; obj: LineSegments2; dist: THREE.InstancedInterleavedBuffer | null }; // dist — только у пунктира
 type Built = ReturnType<typeof build>;
 type State = {
   ptr: { nx: number; ny: number; inside: boolean };
@@ -85,7 +85,7 @@ function build(tier: Tier) {
       uDepthRange: { value: C.lattice.R0 }, uFadeMin: { value: C.depthFade }, uMaxSize: { value: C.node.maxSize },
       uTime: { value: 0 }, uFront: { value: 0 }, uHeatSize: { value: C.node.heatSize }, uDustSize: { value: C.lattice.dust.size },
       uBase: { value: base }, uSignal: { value: signal }, uGlowGain: { value: C.node.glowGain }, uIntensity: { value: 1 },
-      uDustAlpha: { value: 0 }, uBaseMul: { value: C.node.baseMul },
+      uDustAlpha: { value: 0 }, uBaseMul: { value: C.node.baseMul }, uSquare: { value: C.node.square },
       uAlpha: { value: new THREE.Vector2(C.node.alpha[0], C.node.alpha[1]) },
     },
     vertexShader: NODE_VERT, fragmentShader: NODE_FRAG,
@@ -95,8 +95,9 @@ function build(tier: Tier) {
   points.frustumCulled = false;
   points.renderOrder = 2;
 
-  // связи (LineSegments2): струты и волоски — два непрерывных диапазона буферов симуляции
-  const makeLines = (pos: Float32Array, col: Float32Array, count: number): Lines => {
+  // связи (LineSegments2): струты и волоски — два непрерывных диапазона буферов симуляции;
+  // рамка и осевые — статичные цвета, позиции пишет симуляция (дорисовка/ретракт)
+  const makeLines = (pos: Float32Array, col: Float32Array, count: number, dashed = false): Lines => {
     const geo = new LineSegmentsGeometry();
     geo.setPositions(pos); // держит Float32Array по ссылке
     geo.setColors(col);
@@ -107,17 +108,35 @@ function build(tier: Tier) {
     const mat = new LineMaterial({
       color: 0xffffff, vertexColors: true, linewidth: 1, worldUnits: false, transparent: true,
       blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, fog: true, alphaToCoverage: false,
+      dashed, dashSize: C.lattice.axes.dash, gapSize: C.lattice.axes.gap,
     });
+    // пунктир: дистанции (0 → длина отрезка) пишем сами во flush — computeLineDistances() пересоздаёт буфер
+    let dist: THREE.InstancedInterleavedBuffer | null = null;
+    if (dashed) {
+      dist = new THREE.InstancedInterleavedBuffer(new Float32Array(count * 2), 2, 1).setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute("instanceDistanceStart", new THREE.InterleavedBufferAttribute(dist, 1, 0));
+      geo.setAttribute("instanceDistanceEnd", new THREE.InterleavedBufferAttribute(dist, 1, 1));
+    }
     const obj = new LineSegments2(geo, mat);
     obj.frustumCulled = false;
     obj.renderOrder = 1;
-    return { geo, mat, obj };
+    return { geo, mat, obj, dist };
   };
   const struts = makeLines(sim.strutPos, sim.strutCol, lattice.strutCount);
   const hairs = makeLines(sim.hairPos, sim.hairCol, lattice.hairCount);
+  const tierMul = tier === "mobile" ? C.mobile.intensity : 1;
+  const flatCol = (count: number, I: number) => {
+    const c = new Float32Array(count * 6);
+    for (let i = 0; i < c.length; i += 3) { c[i] = base.r * I; c[i + 1] = base.g * I; c[i + 2] = base.b * I; }
+    return c;
+  };
+  const frame = makeLines(sim.framePos, flatCol(lattice.frame.count, C.lattice.frame.intensity * tierMul), lattice.frame.count);
+  const axes = makeLines(sim.axesPos, flatCol(lattice.axes.count, C.lattice.axes.intensity * tierMul), lattice.axes.count, true);
+  if (process.env.NODE_ENV !== "production")
+    console.debug(`[network] ${tier}: N=${sim.N} E=${lattice.edgeA.length} (struts ${lattice.strutCount}, hairs ${lattice.hairCount}) H=${sim.H} dust=${sim.D} frame=${lattice.frame.count}`);
 
-  // хабы — гранёные бусины; зелёный только как emissive от жара (инъекция в стандартный материал)
-  const hubGeo = new THREE.IcosahedronGeometry(1, 1);
+  // хабы — кубики-бусины на углах и центрах граней; зелёный только как emissive от жара (инъекция в стандартный материал)
+  const hubGeo = new THREE.BoxGeometry(1, 1, 1);
   const hubHeatAttr = new THREE.InstancedBufferAttribute(sim.hubHeat, 1).setUsage(THREE.DynamicDrawUsage);
   hubGeo.setAttribute("aHeat", hubHeatAttr);
   const hubMat = new THREE.MeshStandardMaterial({
@@ -141,8 +160,8 @@ function build(tier: Tier) {
   hubs.frustumCulled = false;
   hubs.renderOrder = 0;
 
-  // ядро
-  const coreGeo = new THREE.IcosahedronGeometry(C.core.radius, C.core.detail);
+  // ядро — куб-сид, выровнен по сетке; его рёбра рисует рамка (frame.core)
+  const coreGeo = new THREE.BoxGeometry(C.core.size, C.core.size, C.core.size);
   const coreMat = new THREE.ShaderMaterial({
     uniforms: {
       uBody: { value: inkDeep }, uBase: { value: base }, uSignal: { value: signal },
@@ -168,7 +187,7 @@ function build(tier: Tier) {
 
   // граф: frame (размещение + параллакс + масштаб) → tilt → spin (ЛОКАЛЬНОЕ пространство sim)
   const spinG = new THREE.Group();
-  spinG.add(core, hubs, struts.obj, hairs.obj, points, halo);
+  spinG.add(core, hubs, struts.obj, hairs.obj, frame.obj, axes.obj, points, halo);
   const tiltG = new THREE.Group();
   tiltG.rotation.set(C.frame.tilt[0], C.frame.tilt[1], C.frame.tilt[2]);
   tiltG.add(spinG);
@@ -177,11 +196,11 @@ function build(tier: Tier) {
 
   const dispose = () => {
     pointsGeo.dispose(); nodeMat.dispose();
-    struts.geo.dispose(); struts.mat.dispose(); hairs.geo.dispose(); hairs.mat.dispose();
+    for (const L of [struts, hairs, frame, axes]) { L.geo.dispose(); L.mat.dispose(); }
     hubGeo.dispose(); hubMat.dispose(); hubs.dispose();
     coreGeo.dispose(); coreMat.dispose(); haloGeo.dispose(); haloMat.dispose();
   };
-  return { lattice, growth, sim, pointsGeo, pointAttrs, nodeMat, struts, hairs, hubs, hubHeatAttr, core, coreMat, halo, haloMat, spinG, frameG, dispose };
+  return { lattice, growth, sim, pointsGeo, pointAttrs, nodeMat, struts, hairs, frame, axes, hubs, hubHeatAttr, core, coreMat, halo, haloMat, spinG, frameG, dispose };
 }
 
 /** Проекция точки (ox, oy, 0) мира в CSS px канваса при камере на оси z (без three-объектов). */
@@ -288,6 +307,18 @@ function flush(S: Built, camera: THREE.Camera, tmp: Tmp) {
   shade.needsUpdate = true;
   touchLines(S.struts);
   touchLines(S.hairs);
+  touchLines(S.frame);
+  touchLines(S.axes);
+  if (S.axes.dist) {
+    // пунктир осевых: дистанция 0 → текущая длина, штрихи расходятся из ядра
+    const d = S.axes.dist.array as Float32Array, p = sim.axesPos;
+    for (let s = 0; s < S.lattice.axes.count; s++) {
+      const o = s * 6;
+      d[s * 2] = 0;
+      d[s * 2 + 1] = Math.hypot(p[o + 3] - p[o], p[o + 4] - p[o + 1], p[o + 5] - p[o + 2]);
+    }
+    S.axes.dist.needsUpdate = true;
+  }
   for (let k = 0; k < sim.H; k++) {
     const s = Math.max(sim.hubScale[k], 1e-5);
     tmp.hm.makeScale(s, s, s).setPosition(sim.hubPos[k * 3], sim.hubPos[k * 3 + 1], sim.hubPos[k * 3 + 2]);
@@ -355,7 +386,7 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
   useEffect(() => {
     const bloom = hasBloom(tier, quality);
     S.struts.mat.linewidth = lineWidth("strut", tier, quality);
-    S.hairs.mat.linewidth = lineWidth("hair", tier, quality);
+    S.hairs.mat.linewidth = S.frame.mat.linewidth = S.axes.mat.linewidth = lineWidth("hair", tier, quality);
     S.nodeMat.uniforms.uDustAlpha.value = tier === "desktop" && quality > 0 ? C.lattice.dust.alpha : 0;
     S.nodeMat.uniforms.uGlowGain.value = bloom ? C.node.glowGain : C.node.glowGainNoBloom;
     S.coreMat.uniforms.uRimGain.value = bloom ? C.core.rimGain : C.core.rimGainNoBloom;
@@ -366,8 +397,7 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
 
   // resize: разрешение линий (CSS px → ширина в CSS px), dpr, размещение, прямоугольники текста
   useEffect(() => {
-    S.struts.mat.resolution.set(size.width, size.height);
-    S.hairs.mat.resolution.set(size.width, size.height);
+    for (const L of [S.struts, S.hairs, S.frame, S.axes]) L.mat.resolution.set(size.width, size.height);
     S.nodeMat.uniforms.uDpr.value = dpr;
     const { ox, oy } = placement(S, tier, size.width, size.height);
     st.place = { ox, oy };
@@ -491,7 +521,8 @@ function Scene({ reduced, tier, hoverFine, quality, onArmMonitor }: {
     const R0s = C.lattice.R0 * S.frameG.scale.x;
     const fog = scene.fog as THREE.Fog | null;
     if (fog) { fog.near = camZ + C.fog.nearOffset * R0s; fog.far = camZ + lerp(C.fog.farOffsetGrow, C.fog.farOffset, settle) * R0s; }
-    S.spinG.rotation.y = C.growth.yawFrom * (1 - settle) + C.orbit.speed * T + C.journey.yaw * p;
+    const spin = C.orbit.mode === "swing" ? C.orbit.swing * Math.sin(2 * Math.PI * C.orbit.swingHz * T) : C.orbit.speed * T;
+    S.spinG.rotation.y = C.orbit.yaw0 + C.growth.yawFrom * (1 - settle) + spin + C.journey.yaw * p;
     const look = hoverFine && st.ptr.inside;
     const yawT = look ? st.ptr.nx * C.orbit.parallaxYaw : 0;
     const pitchT = look ? -st.ptr.ny * C.orbit.parallaxPitch : 0;

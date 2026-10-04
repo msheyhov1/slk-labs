@@ -1,5 +1,5 @@
-// GLSL «Ядра». Узлы и пыль — один Points-draw (kind в aMeta.y). Ядро — тёмное тело с зелёным
-// френелем и шумом вершин. Гало — аддитивный диск. Хабы — инъекция в MeshStandardMaterial
+// GLSL «Блока». Узлы и пыль — один Points-draw (kind в aMeta.y), спрайт квадратный (uSquare). Ядро — куб-сид:
+// тёмное тело с зелёным френелем (на плоских гранях — тон по грани; кромки рисует рамка). Гало — аддитивный диск. Хабы — инъекция в MeshStandardMaterial
 // (зелёный только как emissive от жара). Цвета приходят linear (THREE.Color из hex).
 // В конце фрагментов — <colorspace_fragment>: при рендере в HalfFloat-буфер композера это no-op,
 // при прямом рендере на экран (мобайл, без композера) даёт тот же sRGB-трансфер, что OutputPass.
@@ -31,10 +31,11 @@ export const NODE_VERT = /* glsl */ `
 
 export const NODE_FRAG = /* glsl */ `
   precision mediump float;
-  uniform vec3 uBase, uSignal; uniform float uGlowGain, uIntensity, uDustAlpha, uBaseMul; uniform vec2 uAlpha;
+  uniform vec3 uBase, uSignal; uniform float uGlowGain, uIntensity, uDustAlpha, uBaseMul, uSquare; uniform vec2 uAlpha;
   varying float vHeat, vFade, vAlphaMul, vKind;
   void main() {
-    vec2 c = gl_PointCoord - 0.5; float d = length(c); if (d > 0.5) discard;
+    // uSquare 1 → квадратный спрайт («пиксель» на сетке, рифма с квадратами-узлами нити), 0 → диск
+    vec2 c = gl_PointCoord - 0.5; float d = mix(length(c), max(abs(c.x), abs(c.y)), uSquare); if (d > 0.5) discard;
     float disc = smoothstep(0.5, 0.08, d);
     vec4 outc;
     if (vKind > 0.5) {

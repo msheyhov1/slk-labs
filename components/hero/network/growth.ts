@@ -1,5 +1,6 @@
-// Порядок сборки — чистая логика, БЕЗ three/react. BFS от корня (ядра) даёт hop/parent/order;
-// время рождения = старт + hop·шаг + джиттер. Easing-хелперы — тот же кубик, что CustomEase
+// Порядок сборки — чистая логика, БЕЗ three/react. BFS от корня (ядра) даёт hop/parent/order:
+// hop = число отрезков сетки от сида, т.е. кольцо 1 → углы/центры колец 2–3 по спицам → грани от
+// рёбер внутрь; время рождения = старт + hop·шаг + малый джиттер (когорты одного хопа идут в ногу). Easing-хелперы — тот же кубик, что CustomEase
 // settle/scene в lib/gsap (паритет без gsap в 3D-чанке).
 import { NETWORK as C, GROWTH_SPAN } from "./config";
 import type { Lattice } from "./lattice";

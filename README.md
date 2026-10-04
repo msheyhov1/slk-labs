@@ -28,7 +28,7 @@ components/
   Header · SmoothScroll (Lenis↔GSAP) · Reveal · KineticText (SplitType) · ScrollJourney (нить)
   journey/ThreadLayer · journey/HeroSeed
   hero/Hero · hero/HeroNetwork (lazy)
-    hero/network/   config · shaders · simulation · LivingNetwork   ← живая сеть (three/r3f)
+    hero/network/   config · lattice · growth · simulation · shaders · LivingNetwork   ← живая сеть «Блок» (three/r3f)
   sections/         Works · Services · Manifesto · Contact
   ui/               Container · MonoLabel · Hairline · Button · SectionHead
 lib/
