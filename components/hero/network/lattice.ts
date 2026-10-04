@@ -22,40 +22,10 @@ export interface Lattice {
   dust: { count: number; pos: Float32Array; consumedAt: Float32Array; phase: Float32Array };
 }
 
-/** Стандартный mulberry32 — детерминированный ГПСЧ в [0, 1). */
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const fract = (x: number) => x - Math.floor(x);
-const hash = (ix: number, iy: number, iz: number) =>
-  fract(Math.sin(ix * 127.1 + iy * 311.7 + iz * 74.7) * 43758.5453);
-const sm = (f: number) => f * f * (3 - 2 * f);
-const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-
-/** Value-noise, трилинейная интерполяция — та же конструкция, что в GLSL ядра. [0, 1]. */
-function vnoise(x: number, y: number, z: number): number {
-  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
-  const fx = sm(x - ix), fy = sm(y - iy), fz = sm(z - iz);
-  const c00 = mix(hash(ix, iy, iz), hash(ix + 1, iy, iz), fx);
-  const c10 = mix(hash(ix, iy + 1, iz), hash(ix + 1, iy + 1, iz), fx);
-  const c01 = mix(hash(ix, iy, iz + 1), hash(ix + 1, iy, iz + 1), fx);
-  const c11 = mix(hash(ix, iy + 1, iz + 1), hash(ix + 1, iy + 1, iz + 1), fx);
-  return mix(mix(c00, c10, fy), mix(c01, c11, fy), fz);
-}
-
-/** fbm: 3 октавы value-noise, результат в [−1, 1]. */
-export function fbm3(x: number, y: number, z: number): number {
-  const n =
-    (vnoise(x, y, z) + 0.5 * vnoise(2 * x, 2 * y, 2 * z) + 0.25 * vnoise(4 * x, 4 * y, 4 * z)) / 1.75;
-  return n * 2 - 1;
-}
+// PRNG и шум живут в lib/ (их же используют чертежи кейсов и OG); здесь — реэкспорт для сети.
+import { mulberry32 } from "@/lib/prng";
+import { fbm3 } from "@/lib/noise";
+export { mulberry32, fbm3 };
 
 export function buildLattice(tier: Tier): Lattice {
   const L = C.lattice;

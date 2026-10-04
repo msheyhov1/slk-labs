@@ -69,6 +69,7 @@
   --color-bone-glass: rgba(242, 240, 233, 0.72); /* костяной фон хедера (blur) */
   --color-ink-deep: #0F1215;                     /* глубже ink: hatch-фон, ховер тёмных кнопок */
   --color-signal-rgb: 0 224 138;                 /* signal в rgb() для прозрачных свечений */
+  --color-bone-wash: rgba(242, 240, 233, 0.06);  /* заливка чертежа кейса на ink */
 
   /* нить (journey): семантические линии — не декоративный --color-hairline */
   --color-thread-on-ink: rgba(242, 240, 233, 0.32); /* костяная нить на ink */

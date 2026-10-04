@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { Container } from "@/components/ui/Container";
 import { nav } from "@/lib/site";
@@ -13,6 +14,7 @@ export function Header() {
   // не моушн → работает и в reduced-motion, и с нативным скроллом. Обёртка героя — pinSpacer,
   // её высота включает спейсер пина → хедер прозрачен весь пин.
   const [surface, setSurface] = useState<Surface>("dark");
+  const pathname = usePathname(); // на другой странице другие секции → триггеры пересоздаются
 
   useEffect(() => {
     const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) || 64;
@@ -27,7 +29,7 @@ export function Header() {
       );
     });
     return () => ctx.revert();
-  }, []);
+  }, [pathname]);
 
   const scrolled = surface === "bone";
 

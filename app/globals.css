@@ -105,15 +105,27 @@ html.journey [data-stitch-line] { transform: scaleX(0); }
 /* ============================================================
    Хелперы (то, что неудобно утилитами Tailwind)
    ============================================================ */
-.diagonal-hatch {
-  background-color: var(--color-ink-deep);
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(242, 240, 233, 0.05) 0,
-    rgba(242, 240, 233, 0.05) 1px,
-    transparent 1px,
-    transparent 11px
-  );
-}
-
 .signal-glow { box-shadow: 0 0 8px rgb(var(--color-signal-rgb) / 0.5); }
+
+/* ============================================================
+   Чертёж кейса (.bp): роли линий → токены. Signal только как свет на ink-deep.
+   ============================================================ */
+.bp { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bp path, .bp rect { vector-effect: non-scaling-stroke; }
+.bp [data-bp="base"] { fill: none; stroke: var(--color-hairline-on-ink-strong); stroke-width: 1; }
+.bp [data-bp="dim"]  { fill: none; stroke: var(--color-hairline-on-ink); stroke-width: 1; }
+.bp [data-bp="dash"] { fill: none; stroke: var(--color-hairline-on-ink-strong); stroke-width: 1; stroke-dasharray: 3 5; }
+.bp [data-bp="fill"] { fill: var(--color-bone-wash); stroke: none; }
+.bp [data-bp="dust"] { fill: none; stroke: var(--color-hairline-on-ink-strong); stroke-width: 2; stroke-linecap: round; }
+.bp [data-bp="node"] { fill: var(--color-ink-fg); }
+.bp [data-bp="lit-node"] { fill: var(--color-signal); filter: drop-shadow(0 0 4px rgb(var(--color-signal-rgb) / 0.6)); }
+.bp [data-bp="lit"]  { fill: none; stroke: var(--color-signal); stroke-width: 1.25; stroke-dasharray: 1; stroke-dashoffset: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .bp [data-bp="lit"] { transition: stroke-dashoffset var(--dur-slow) var(--ease-out-expo); }
+  .bp { transition: transform var(--dur-short) var(--ease-out-expo); }
+  a:hover .bp [data-bp="lit"] { stroke-dashoffset: 0; } /* след дорисовывается по чертежу */
+  a:hover .bp { transform: translateY(-2px); }
+}
+@media not all and (hover: hover) and (pointer: fine) { .bp [data-bp="lit"] { stroke-dashoffset: 0; } }
+[data-stage] .bp [data-bp="lit"] { stroke-dashoffset: 0; } /* в комнате чертёж всегда дорисован */
+[data-surface="dark"] :focus-visible { outline-color: var(--color-ink-fg); } /* signal-ink на ink не читается */

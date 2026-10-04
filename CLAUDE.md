@@ -139,7 +139,8 @@ slk-labs/
 |---|---|
 | Цвет / типографику / отступы / радиусы / easing-токены | `styles/tokens.css` |
 | Текст героя/услуг/манифеста/контакта | `lib/content/*` |
-| Кейсы (карточки в Works) | `lib/cases.ts` |
+| Кейсы (карточки, страницы `/work/[slug]`, OG, редакция NDA) | `lib/cases.ts` (данные), `lib/content/work.ts` (копирайт страниц) |
+| Чертежи-обложки кейсов (глобус / решётка / лента) | `lib/blueprint.ts` + CSS `.bp` в `globals.css` |
 | Навигацию / SEO-метаданные / контакты | `lib/site.ts` |
 | **Физику и вид живой сети** (тяга, чистая зона, радиус, плотность, зелёный) | `components/hero/network/config.ts` |
 | Форма решётки / рост / порядок сборки | `lattice.ts`, `growth.ts` (+ `config.lattice`/`config.growth`) |
